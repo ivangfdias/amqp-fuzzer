@@ -1,23 +1,34 @@
-#include "AMQP.h"
 
+#include "AMQP.h"
+#include "Packet.h"
+#include "utils.h"
 #include <pthread.h>
 
 #define MAXLINE 4096
 
+pthread_cond_t read_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
 
+enum State {
+  None,
+  ConnectionStart,
+  ConnectionTune,
+  ConnectionSecure,
+  ConnectionOpen
+};
+
+enum State current_state = None;
 
 // Necessario para os argumentos de listener
 typedef struct {
-  int socket_fd; // fd do socket
-  char recvline[MAXLINE + 1]; // Pacote recebido
-  int n; // qtd de bytes do pacote i guess?
-  pthread_cond_t *read_cond; // condicao para liberar threads q precisam ouvir a resposta antes de prosseguir TODO fazer global
-  pthread_mutex_t *cond_mutex; // mutex para acesso aa variavel de condicao TODO fazer global
+  int socket_fd;                       // fd do socket
+  unsigned char recvline[MAXLINE + 1]; // Pacote recebido
+  int n;                               // qtd de bytes do pacote i guess?
 } listener_struct;
 
 void *listener(void *void_args) {
 
-  listener_struct *args = void_args;
+  listener_struct *args = (listener_struct *)void_args;
   int sockfd = args->socket_fd;
 
   int n;
@@ -26,44 +37,39 @@ void *listener(void *void_args) {
   // Le a mensagem recebida no socket
   while ((n = read(sockfd, args->recvline, MAXLINE) > 0)) {
     args->recvline[n] = 0;
-    
-    printf("Travando mutex...\n");
-    pthread_mutex_lock(args->cond_mutex);
-    printf("Mudando o n...\n");
+
+    //    pthread_mutex_lock(args->cond_mutex);
+    pthread_mutex_lock(&mutex_read);
     args->n = n;
-    printf("Destravando mutex...\n");
-    pthread_mutex_unlock(args->cond_mutex);
-    printf("Liberando condicao...\n");
-    pthread_cond_broadcast(args->read_cond);
+    pthread_mutex_unlock(&mutex_read);
+    //    pthread_mutex_unlock(args->cond_mutex);
+    //    pthread_cond_broadcast(args->read_cond);
+    pthread_cond_broadcast(&read_cond);
   }
-    printf("Liberando condicao pq morri...\n");
-  pthread_cond_broadcast(args->read_cond); // destrava a condicao qdo morre
+  pthread_cond_broadcast(&read_cond);
+  //  pthread_cond_broadcast(args->read_cond); // destrava a condicao qdo morre
 
   return NULL;
 }
 
+packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
 
+  packet_struct* packet = malloc(sizeof(packet_struct));
+  int n;
 
-char* wait_response(int* ext_n, listener_struct* listener_args ){
-
-    int n;
-
-  pthread_mutex_lock(listener_args->cond_mutex);
-  while( (n = listener_args->n) == 0){
-    pthread_cond_wait(listener_args->read_cond, listener_args->cond_mutex);
+  pthread_mutex_lock(&mutex_read);
+  while ((n = listener_args->n) == 0) {
+    pthread_cond_wait(&read_cond, &mutex_read);
   }
-  printf("Recebi resposta do servidor e posso seguir!\n");
 
-  n = listener_args->n;
-  printf("%d vs %d\n", listener_args->n, n);
-  printf("\n");
-  pthread_mutex_unlock(listener_args->cond_mutex);
+  break_packet(listener_args->recvline, packet);
 
-  *ext_n = n;
-  return NULL;
-  // TODO copiar o packet para um char mallocado e retornar
+  pthread_mutex_unlock(&mutex_read);
+
+  return packet;
 }
 
+// TODO move to Connectivity ?
 int send_protocol_header(int sockfd) {
 
   char *protocol_header = calloc(8, sizeof(char));
@@ -74,11 +80,17 @@ int send_protocol_header(int sockfd) {
 
   // Escreve a mensagem no socket
   write(sockfd, protocol_header, 8);
+  free(protocol_header);
 
   return 0;
 }
-void parse_packet (char* packet){
-    printf("TODO!\n");
+
+enum State packet_decider(packet_struct* packet, enum State current_state){
+    if (packet->type != 1)
+        return current_state;
+
+    printf("TODO");
+    return current_state;
 }
 
 int fuzz(int sockfd) {
@@ -88,33 +100,24 @@ int fuzz(int sockfd) {
   pthread_mutex_t msg_mutex = PTHREAD_MUTEX_INITIALIZER;
 
   int n;
-  char received_packet[MAXLINE + 1];
 
-
-  listener_struct *listener_args = malloc(sizeof(listener_struct *));
+  listener_struct *listener_args = malloc(sizeof(listener_struct));
 
   listener_args->socket_fd = sockfd;
-  listener_args->read_cond = &nova_msg;
-  listener_args->cond_mutex = &msg_mutex;
   listener_args->n = 0;
 
   pthread_create(&listener_thread, NULL, listener, listener_args);
-  
+
   send_protocol_header(sockfd);
-  
 
-  n = 0;
-  pthread_mutex_lock(&msg_mutex);
-  while( (n = listener_args->n) == 0){
-    pthread_cond_wait(&nova_msg, &msg_mutex);
-  }
-  printf("Recebi resposta do servidor e posso seguir!\n");
+  packet_struct *packet;
+  packet = wait_response(&n, listener_args);
 
-  n = listener_args->n;
-  printf("%d vs %d\n", listener_args->n, n);
-  printf("\n");
-  pthread_mutex_unlock(&msg_mutex);
+  current_state = packet_decider(packet, current_state);
+  packet = wait_response(&n, listener_args);
 
+  while(current_state != None)
+      current_state = packet_decider(packet, current_state);
   pthread_join(listener_thread, NULL);
 
   return 0;

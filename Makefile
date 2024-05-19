@@ -6,7 +6,7 @@ DOC=doxygen
 
 PROGRAM=main.c
 LIB= AMQP.a
-OBJS= AMQP.o Connectivity.o
+OBJS= AMQP.o Connectivity.o Packet.o utils.o
 
 #AMQP.o 
 #Consumer.o Basic.o Queue.o Channel.o Connection.o 
@@ -18,13 +18,10 @@ OBJS= AMQP.o Connectivity.o
 .c.o:
 	${CC} ${CFLAGS} -c $<
 
-all: clear_temp main.out
+all: main.out
 
 ${LIB}: ${OBJS}
 	${AR} ${ARFLAGS} $@ ${OBJS}
-
-clear_temp: 
-	@rm -rf /tmp/redes-ep1-ivan
 
 main.out: ${PROGRAM} ${OBJS} ${LIB}
 	${CC} ${CFLAGS} -o $@ ${PROGRAM} ${LIB} -pthread
@@ -33,3 +30,7 @@ main.out: ${PROGRAM} ${OBJS} ${LIB}
 clean:
 	@rm -rf *.o html *.a main.out
 
+test:
+	./main.out 127.0.0.1
+
+retest: main.out test
