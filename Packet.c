@@ -81,7 +81,7 @@ int add_string_entry(unsigned char *dest, char field_size,
   return full_size;
 }
 
-char *get_arguments(unsigned char *src) {
+unsigned char *get_arguments(unsigned char *src) {
   // arguments start on position 11;
   int size = char_in_int(src, 3) - 4;
   int arguments_size;
@@ -111,4 +111,4 @@ char verify_length(unsigned char *packet, int length) {
 }
 
 
-void break_packet(unsigned char *packet, packet_struct *dest) {
+void break_packet(unsigned char *packet, packet_struct *dest) ;

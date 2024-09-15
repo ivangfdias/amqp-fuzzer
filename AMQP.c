@@ -1,5 +1,6 @@
 
 #include "AMQP.h"
+#include "../grammar/packet-generator.h"
 #include "Packet.h"
 #include "utils.h"
 #include <pthread.h>
@@ -8,6 +9,8 @@
 
 pthread_cond_t read_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
+
+static Grammar contextful_grammar = NULL;
 
 enum State {
   None,
@@ -54,7 +57,7 @@ void *listener(void *void_args) {
 
 packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
 
-  packet_struct* packet = malloc(sizeof(packet_struct));
+  packet_struct *packet = malloc(sizeof(packet_struct));
   int n;
 
   pthread_mutex_lock(&mutex_read);
@@ -62,10 +65,11 @@ packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
     pthread_cond_wait(&read_cond, &mutex_read);
   }
 
-  break_packet(listener_args->recvline, packet);
+  // break_packet(listener_args->recvline, packet);
 
   pthread_mutex_unlock(&mutex_read);
 
+  printf("Read!\n");
   return packet;
 }
 
@@ -85,12 +89,65 @@ int send_protocol_header(int sockfd) {
   return 0;
 }
 
-enum State packet_decider(packet_struct* packet, enum State current_state){
-    if (packet->type != 1)
-        return current_state;
+enum State packet_decider(packet_struct *packet, enum State current_state,
+                          int sockfd) {
+  int size = 0;
+  unsigned char *sent_packet;
+  enum State next_state = current_state;
+  if (packet == NULL) {
+    sent_packet = decode_rule("amqp", &size, NULL);
+    next_state = ConnectionStart;
+  } else {
+    contextful_grammar = generate_grammar("../grammar/grammar-connection");
 
-    printf("TODO");
+    /*
+  if (packet->type != 1)
     return current_state;
+*/
+
+    grammar_insert(contextful_grammar, "method-id",
+                   new_grammar_entry_t(STRING, "\%x00.0B", NULL, 0));
+
+    int payload_size = 0;
+    unsigned char *payload =
+        decode_rule("method-payload", &payload_size, contextful_grammar);
+    printf("\n ==== PAYLOAD ==== \n");
+    for (int i = 0; i < payload_size; i++) {
+      printf("%02x", (unsigned char)payload[i]);
+      if (((i + 1) % 16) == 0)
+        printf("\n");
+    }
+
+    printf("\n= payload size = %d =\n", payload_size);
+    grammar_entry_t *payload_g_e_t =
+        new_grammar_entry_t(BYTE_ARRAY, (char *)payload, NULL, payload_size);
+
+    grammar_insert(contextful_grammar, "method-payload", payload_g_e_t);
+
+    for (int i = 0; i < payload_g_e_t->array_size; i++) {
+
+      printf("%02x", (unsigned char)payload_g_e_t->str_entry[i]);
+      if (((i + 1) % 16) == 0)
+        printf("\n");
+    }
+    printf("\n");
+    char *payload_size_literal = calloc(4, sizeof(char));
+    int_in_char((unsigned char *)payload_size_literal, payload_size, 0, 4);
+
+    grammar_entry_t *payload_size_g_e_t =
+        new_grammar_entry_t(BYTE_ARRAY, payload_size_literal, NULL, 4);
+
+    grammar_insert(contextful_grammar, "payload-size", payload_size_g_e_t);
+
+    sent_packet = decode_rule("method", &size, contextful_grammar);
+  }
+  printf("\n===\n");
+  for (int i = 0; i < size; i++) {
+    printf("%02x", sent_packet[i]);
+  }
+  printf("\n");
+  send_packet(sockfd, sent_packet, size);
+  return current_state;
 }
 
 int fuzz(int sockfd) {
@@ -101,6 +158,8 @@ int fuzz(int sockfd) {
 
   int n;
 
+  grammar_init("../grammar/grammar-spec", "../grammar/grammar-abnf");
+
   listener_struct *listener_args = malloc(sizeof(listener_struct));
 
   listener_args->socket_fd = sockfd;
@@ -108,16 +167,17 @@ int fuzz(int sockfd) {
 
   pthread_create(&listener_thread, NULL, listener, listener_args);
 
-  send_protocol_header(sockfd);
+  current_state = packet_decider(NULL, current_state, sockfd);
+  // send_protocol_header(sockfd);
 
   packet_struct *packet;
   packet = wait_response(&n, listener_args);
 
-  current_state = packet_decider(packet, current_state);
+  current_state = packet_decider(packet, current_state, sockfd);
   packet = wait_response(&n, listener_args);
 
-  while(current_state != None)
-      current_state = packet_decider(packet, current_state);
+  while (current_state != None)
+    current_state = packet_decider(packet, current_state, sockfd);
   pthread_join(listener_thread, NULL);
 
   return 0;

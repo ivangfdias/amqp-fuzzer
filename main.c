@@ -23,7 +23,8 @@ int main(int argc, char **argv) {
   pthread_t listener_thread;
 
   if (argc < 2 || argc > 3) {
-    printf("I dunno\n");
+    printf("Usage: %s <address> [port]\n", argv[0]);
+    return 1;
   }
 
   if (argc == 2) {
