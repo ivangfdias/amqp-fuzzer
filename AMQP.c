@@ -107,6 +107,60 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
     grammar_insert(contextful_grammar, "method-id",
                    new_grammar_entry_t(STRING, "m11-method-id", NULL, 0));
 
+    grammar_insert(
+        contextful_grammar, "method-properties",
+        new_grammar_entry_t(STRING, "m11-method-properties", NULL, 0));
+
+    int longstringlen = 0;
+    unsigned char *longstring =
+        parse_elements("*OCTET", &longstringlen, contextful_grammar);
+
+    printf("longstringlen = %d\n", longstringlen);
+    unsigned char *newstr = calloc(longstringlen + 4, sizeof(char));
+    longstringlen -= 3;
+    int_in_char(newstr, longstringlen, 0, longstringlen + 4);
+    memcpy(newstr + 4, longstring, longstringlen);
+
+    grammar_insert(contextful_grammar, "product-value",
+                   new_grammar_entry_t(BYTE_ARRAY, (char *)newstr, NULL,
+                                       longstringlen + 4));
+
+    grammar_insert(contextful_grammar, "version-value",
+                   new_grammar_entry_t(BYTE_ARRAY, (char *)newstr, NULL,
+                                       longstringlen + 4));
+
+    grammar_insert(contextful_grammar, "platform-value",
+                   new_grammar_entry_t(BYTE_ARRAY, (char *)newstr, NULL,
+                                       longstringlen + 4));
+    int method_properties_length = 0;
+    unsigned char *method_properties_payload =
+        decode_rule("client-properties-payload", &method_properties_length,
+                    contextful_grammar);
+
+    grammar_insert(contextful_grammar, "client-properties-payload",
+                   new_grammar_entry_t(BYTE_ARRAY,
+                                       (char *)method_properties_payload, NULL,
+                                       method_properties_length));
+    char *properties_length_literal = calloc(4, sizeof(char));
+    int_in_char((unsigned char *)properties_length_literal,
+                method_properties_length, 0, 4);
+    grammar_insert(
+        contextful_grammar, "client-properties-length",
+        new_grammar_entry_t(BYTE_ARRAY, properties_length_literal, NULL, 4));
+
+    int message_length = 0;
+    char *message = decode_rule("message", &message_length, contextful_grammar);
+
+    char *message_length_literal = calloc(4, sizeof(char));
+    int_in_char(message_length_literal, message_length, 0, 4);
+
+    grammar_insert(
+        contextful_grammar, "message",
+        new_grammar_entry_t(BYTE_ARRAY, message, NULL, message_length));
+    grammar_insert(
+        contextful_grammar, "message-length",
+        new_grammar_entry_t(BYTE_ARRAY, message_length_literal, NULL, 4));
+
     int payload_size = 0;
     unsigned char *payload =
         decode_rule("method-payload", &payload_size, contextful_grammar);
@@ -131,16 +185,6 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
         new_grammar_entry_t(BYTE_ARRAY, payload_size_literal, NULL, 4);
 
     grammar_insert(contextful_grammar, "payload-size", payload_size_g_e_t);
-
-    int method_properties_length = 0;
-    unsigned char* method_properties_payload = decode_rule("m11-method-properties-payload", &method_properties_length, contextful_grammar);
-
-    grammar_insert(contextful_grammar, "method-properties",
-            new_grammar_entry_t(BYTE_ARRAY, (char *) method_properties_payload, NULL, 0));
-    char* properties_length_literal = calloc (4, sizeof(char));
-    int_in_char((unsigned char *) properties_length_literal, method_properties_length, 0, 4);
-    grammar_insert(contextful_grammar, "method-proprrties-length",
-            new_grammar_entry_t(BYTE_ARRAY, properties_length_literal, NULL, 4));
 
     sent_packet = decode_rule("method", &size, contextful_grammar);
   }
