@@ -1,4 +1,3 @@
-
 #include "AMQP.h"
 #include "../grammar/packet-generator.h"
 #include "Packet.h"
@@ -106,11 +105,12 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
 */
 
     grammar_insert(contextful_grammar, "method-id",
-                   new_grammar_entry_t(STRING, "\%x00.0B", NULL, 0));
+                   new_grammar_entry_t(STRING, "m11-method-id", NULL, 0));
 
     int payload_size = 0;
     unsigned char *payload =
         decode_rule("method-payload", &payload_size, contextful_grammar);
+
     printf("\n ==== PAYLOAD ==== \n");
     for (int i = 0; i < payload_size; i++) {
       printf("%02x", (unsigned char)payload[i]);
@@ -124,13 +124,6 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
 
     grammar_insert(contextful_grammar, "method-payload", payload_g_e_t);
 
-    for (int i = 0; i < payload_g_e_t->array_size; i++) {
-
-      printf("%02x", (unsigned char)payload_g_e_t->str_entry[i]);
-      if (((i + 1) % 16) == 0)
-        printf("\n");
-    }
-    printf("\n");
     char *payload_size_literal = calloc(4, sizeof(char));
     int_in_char((unsigned char *)payload_size_literal, payload_size, 0, 4);
 
@@ -139,11 +132,21 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
 
     grammar_insert(contextful_grammar, "payload-size", payload_size_g_e_t);
 
+    int method_properties_length = 0;
+    unsigned char* method_properties_payload = decode_rule("m11-method-properties-payload", &method_properties_length, contextful_grammar);
+
+    grammar_insert(contextful_grammar, "method-properties",
+            new_grammar_entry_t(BYTE_ARRAY, (char *) method_properties_payload, NULL, 0));
+    char* properties_length_literal = calloc (4, sizeof(char));
+    int_in_char((unsigned char *) properties_length_literal, method_properties_length, 0, 4);
+    grammar_insert(contextful_grammar, "method-proprrties-length",
+            new_grammar_entry_t(BYTE_ARRAY, properties_length_literal, NULL, 4));
+
     sent_packet = decode_rule("method", &size, contextful_grammar);
   }
   printf("\n===\n");
   for (int i = 0; i < size; i++) {
-    printf("%02x", sent_packet[i]);
+    printf("%02x ", sent_packet[i]);
   }
   printf("\n");
   send_packet(sockfd, sent_packet, size);
