@@ -111,4 +111,65 @@ char verify_length(unsigned char *packet, int length) {
 }
 
 
-void break_packet(unsigned char *packet, packet_struct *dest) ;
+void free_packet_struct(packet_struct* packet){
+  switch(packet->type){
+	  case METHOD:
+		  free(packet->method_payload->arguments_byte_array);
+		  free(packet->method_payload);
+		  break;
+	  case HEADER:
+		  free(packet->header_payload->property_list);
+		  free(packet->header_payload);
+		  break;
+	  case BODY:
+		  free(packet->body_payload->body);
+		  free(packet->body_payload);
+	  default:
+		  break;
+  }	  
+  free(packet);
+};
+
+packet_struct* break_packet(unsigned char *packet){
+
+	printf("BREAK_PACKET\n");
+  packet_struct* result = calloc(1, sizeof(packet_struct));
+  frame_type type = packet[0];
+  short channel = char_in_short (packet, 1);
+  int size = char_in_int(packet, 3);
+  if (packet[7 + size] != 0xCE){
+	  result->type = NONE;
+	  return result;
+  }
+  result->type = type;
+  result->channel = channel;
+  result->size = size;
+  switch(type){
+	case METHOD:
+		method_struct* method_payload = calloc(1, sizeof(method_struct));
+
+		method_payload->class_id = packet[8] + packet[9] << 4;
+		method_payload->method_id = char_in_short(packet, 10);
+
+		method_payload->arguments_byte_array = calloc(size - 4, sizeof(char));
+		memcpy(method_payload->arguments_byte_array, packet + 8 + size + 4, size - 4);
+
+		method_payload->arguments_length = size - 4;
+
+		result->method_payload = method_payload;
+		break;
+	case HEADER:
+		break;
+	case BODY:
+		break;
+	case HEARTBEAT:
+		break;
+	case NONE:
+		break;
+	default:
+		break;
+  }
+  printf("assigning\n");
+  return result;
+};
+
