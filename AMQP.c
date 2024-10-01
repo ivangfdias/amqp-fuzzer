@@ -88,122 +88,87 @@ int send_protocol_header(int sockfd) {
   return 0;
 }
 
+unsigned char* shortstring_generator (int* length, Grammar environment){
+	unsigned char shortstring_length = (rand() % RULE_REPETITION_INFTY) % 256;
+
+	unsigned char* result = calloc (shortstring_length + 1, sizeof(char));
+
+	result[0] = shortstring_length;
+	int length_dummy = 0;
+	for (int i = 1; i < shortstring_length  +1; i++){
+		result[i] = decode_rule("OCTET", &length_dummy, environment);
+	}
+	*length = shortstring_length + 1;
+	return result;
+}
+unsigned char* longstring_generator (int* length, Grammar environment){
+	unsigned int string_length = (rand() % RULE_REPETITION_INFTY);
+	unsigned char* result = calloc (string_length + 4, sizeof(char));
+
+	int_in_char(result, string_length, 0, string_length + 4);
+	int length_dummy = 0;
+	for (int i = 4; i < string_length + 4; i++){
+		result[i] = decode_rule("OCTET", &length_dummy, environment);
+	}
+	*length = string_length + 4;
+	return result;
+}
+
+void overwrite_rule_set_length(char* rule_to_decode, char* length_rule, int length_size, Grammar grammar){
+
+    int decoded_rule_length = 0;
+    unsigned char *decoded_rule =
+        decode_rule(rule_to_decode, &decoded_rule_length,
+                    contextful_grammar);
+
+    grammar_insert(grammar, rule_to_decode,
+                   new_grammar_entry_t(BYTE_ARRAY,
+                                       (char *)decoded_rule, NULL,
+                                       decoded_rule_length, NULL));
+
+    char *decoded_length_literal = calloc(length_size, sizeof(char));
+    int_in_char((unsigned char *)decoded_length_literal,
+                decoded_rule_length, 0, length_size);
+
+    grammar_insert(
+        grammar, length_rule,
+        new_grammar_entry_t(BYTE_ARRAY, decoded_length_literal, NULL, length_size, NULL));
+}
+
 enum State packet_decider(packet_struct *packet, enum State current_state,
                           int sockfd) {
   int size = 0;
   unsigned char *sent_packet;
   enum State next_state = current_state;
+
   if (packet == NULL) {
     sent_packet = decode_rule("amqp", &size, NULL);
     next_state = ConnectionStart;
   } else {
+    /* SETTING UP CONNECTION GRAMMAR */
     contextful_grammar = generate_grammar("../grammar/grammar-connection");
 
+    grammar_insert(contextful_grammar, "short-string", new_function_grammar_entry(shortstring_generator));
 
-    /*  TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO 
-     *
-     * Olá Ivan!
-     *  
-     * Você está vendo aqui que há uma BAGUNÇA nessa seção.
-     *
-     * Podemos ver que você por várias vezes realiza um procedimento comum:
-     * - Gera uma mensagem
-     * - Captura o comprimento
-     * - Transforma o comprimento em 4 octetos
-     * - Substitui as regras da mensagem do comprimento
-     *
-     * Vamos fazer uma função pra isso meu querido? <3
-     *
-     *  TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO 
-     */
-    grammar_insert(contextful_grammar, "method-id",
-                   new_grammar_entry_t(STRING, "m11-method-id", NULL, 0));
+    grammar_insert(contextful_grammar, "long-string", new_function_grammar_entry(longstring_generator));;
 
-    grammar_insert(
-        contextful_grammar, "method-properties",
-        new_grammar_entry_t(STRING, "m11-method-properties", NULL, 0));
+    /* SETTING UP METHOD MESSAGE */
+    grammar_insert(contextful_grammar, "method-id", new_string_grammar_entry("m11-method-id"));
 
-    int longstringlen = 0;
-    unsigned char *longstring =
-        parse_elements("*OCTET", &longstringlen, contextful_grammar);
+    grammar_insert(contextful_grammar, "method-properties", new_string_grammar_entry("m11-method-properties"));
 
-    printf("longstringlen = %d\n", longstringlen);
-    unsigned char *newstr = calloc(longstringlen + 4, sizeof(char));
-    longstringlen -= 3;
-    int_in_char(newstr, longstringlen, 0, longstringlen + 4);
-    memcpy(newstr + 4, longstring, longstringlen);
+    /* GOING THROUGH METHOD SPECIFIC STUFF */
+    overwrite_rule_set_length("client-properties-payload", "client-properties-length", 4, contextful_grammar);
+    
+    /* PLAIN AUTHENTICATION METHOD */
+    grammar_insert(contextful_grammar, "authcid", new_string_grammar_entry("\"username\""));
 
-    grammar_insert(contextful_grammar, "product-value",
-                   new_grammar_entry_t(BYTE_ARRAY, (char *)newstr, NULL,
-                                       longstringlen + 4));
+    grammar_insert(contextful_grammar, "passwd", new_string_grammar_entry("\"password\""));
 
-    grammar_insert(contextful_grammar, "version-value",
-                   new_grammar_entry_t(BYTE_ARRAY, (char *)newstr, NULL,
-                                       longstringlen + 4));
+    overwrite_rule_set_length("message", "message-length", 4, contextful_grammar);
 
-    grammar_insert(contextful_grammar, "platform-value",
-                   new_grammar_entry_t(BYTE_ARRAY, (char *)newstr, NULL,
-                                       longstringlen + 4));
-    int method_properties_length = 0;
-    unsigned char *method_properties_payload =
-        decode_rule("client-properties-payload", &method_properties_length,
-                    contextful_grammar);
-
-    grammar_insert(contextful_grammar, "client-properties-payload",
-                   new_grammar_entry_t(BYTE_ARRAY,
-                                       (char *)method_properties_payload, NULL,
-                                       method_properties_length));
-    char *properties_length_literal = calloc(4, sizeof(char));
-    int_in_char((unsigned char *)properties_length_literal,
-                method_properties_length, 0, 4);
-    grammar_insert(
-        contextful_grammar, "client-properties-length",
-        new_grammar_entry_t(BYTE_ARRAY, properties_length_literal, NULL, 4));
-
-    grammar_insert(contextful_grammar, "authcid", 
-            new_grammar_entry_t(STRING, "\"username\"", NULL, 0));
-
-    grammar_insert(contextful_grammar, "passwd", 
-            new_grammar_entry_t(STRING, "\"password\"", NULL, 0));
-
-    int message_length = 0;
-    unsigned char *message = decode_rule("message", &message_length, contextful_grammar);
-
-    unsigned char *message_length_literal = calloc(4, sizeof(char));
-    int_in_char(message_length_literal, message_length, 0, 4);
-
-    grammar_insert(
-        contextful_grammar, "message",
-        new_grammar_entry_t(BYTE_ARRAY, (char*) message, NULL, message_length));
-    grammar_insert(
-        contextful_grammar, "message-length",
-        new_grammar_entry_t(BYTE_ARRAY, (char*) message_length_literal, NULL, 4));
-
-    int payload_size = 0;
-    unsigned char *payload =
-        decode_rule("method-payload", &payload_size, contextful_grammar);
-
-    printf("\n ==== PAYLOAD ==== \n");
-    for (int i = 0; i < payload_size; i++) {
-      printf("%02x", (unsigned char)payload[i]);
-      if (((i + 1) % 16) == 0)
-        printf("\n");
-    }
-
-    printf("\n= payload size = %d =\n", payload_size);
-    grammar_entry_t *payload_g_e_t =
-        new_grammar_entry_t(BYTE_ARRAY, (char *)payload, NULL, payload_size);
-
-    grammar_insert(contextful_grammar, "method-payload", payload_g_e_t);
-
-    char *payload_size_literal = calloc(4, sizeof(char));
-    int_in_char((unsigned char *)payload_size_literal, payload_size, 0, 4);
-
-    grammar_entry_t *payload_size_g_e_t =
-        new_grammar_entry_t(BYTE_ARRAY, payload_size_literal, NULL, 4);
-
-    grammar_insert(contextful_grammar, "payload-size", payload_size_g_e_t);
-
+    /* PREPARING METHOD PACKET */
+    overwrite_rule_set_length("method-payload", "payload-size", 4, contextful_grammar);
 
     sent_packet = decode_rule("method", &size, contextful_grammar);
   }
