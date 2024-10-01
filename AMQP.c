@@ -99,11 +99,23 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
   } else {
     contextful_grammar = generate_grammar("../grammar/grammar-connection");
 
-    /*
-  if (packet->type != 1)
-    return current_state;
-*/
 
+    /*  TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO 
+     *
+     * Olá Ivan!
+     *  
+     * Você está vendo aqui que há uma BAGUNÇA nessa seção.
+     *
+     * Podemos ver que você por várias vezes realiza um procedimento comum:
+     * - Gera uma mensagem
+     * - Captura o comprimento
+     * - Transforma o comprimento em 4 octetos
+     * - Substitui as regras da mensagem do comprimento
+     *
+     * Vamos fazer uma função pra isso meu querido? <3
+     *
+     *  TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO 
+     */
     grammar_insert(contextful_grammar, "method-id",
                    new_grammar_entry_t(STRING, "m11-method-id", NULL, 0));
 
@@ -148,18 +160,24 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
         contextful_grammar, "client-properties-length",
         new_grammar_entry_t(BYTE_ARRAY, properties_length_literal, NULL, 4));
 
-    int message_length = 0;
-    char *message = decode_rule("message", &message_length, contextful_grammar);
+    grammar_insert(contextful_grammar, "authcid", 
+            new_grammar_entry_t(STRING, "\"username\"", NULL, 0));
 
-    char *message_length_literal = calloc(4, sizeof(char));
+    grammar_insert(contextful_grammar, "passwd", 
+            new_grammar_entry_t(STRING, "\"password\"", NULL, 0));
+
+    int message_length = 0;
+    unsigned char *message = decode_rule("message", &message_length, contextful_grammar);
+
+    unsigned char *message_length_literal = calloc(4, sizeof(char));
     int_in_char(message_length_literal, message_length, 0, 4);
 
     grammar_insert(
         contextful_grammar, "message",
-        new_grammar_entry_t(BYTE_ARRAY, message, NULL, message_length));
+        new_grammar_entry_t(BYTE_ARRAY, (char*) message, NULL, message_length));
     grammar_insert(
         contextful_grammar, "message-length",
-        new_grammar_entry_t(BYTE_ARRAY, message_length_literal, NULL, 4));
+        new_grammar_entry_t(BYTE_ARRAY, (char*) message_length_literal, NULL, 4));
 
     int payload_size = 0;
     unsigned char *payload =
@@ -185,6 +203,7 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
         new_grammar_entry_t(BYTE_ARRAY, payload_size_literal, NULL, 4);
 
     grammar_insert(contextful_grammar, "payload-size", payload_size_g_e_t);
+
 
     sent_packet = decode_rule("method", &size, contextful_grammar);
   }
