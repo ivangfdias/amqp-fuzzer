@@ -1,18 +1,15 @@
 #include "AMQP.h"
-#include "../grammar/packet-generator.h"
-#include "Packet.h"
-#include "utils.h"
-#include <pthread.h>
-
-#define MAXLINE 4096
 
 pthread_cond_t read_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
 
+// In Connection this is not a problem as only the main Thread does connection
+// calls. In further classes, one should use Thread Local Storage Link for
+// further info: https://en.wikipedia.org/wiki/Thread-local_storage
 static Grammar contextful_grammar = NULL;
 
 enum State {
-  None,
+  None = 0,
   ConnectionStart,
   ConnectionTune,
   ConnectionSecure,
@@ -40,18 +37,13 @@ void *listener(void *void_args) {
   while ((n = read(sockfd, args->recvline, MAXLINE) > 0)) {
     args->recvline[n] = 0;
 
-    //    pthread_mutex_lock(args->cond_mutex);
     pthread_mutex_lock(&mutex_read);
     printf("n = %d\n", n);
     args->n = n;
     pthread_mutex_unlock(&mutex_read);
-    //    pthread_mutex_unlock(args->cond_mutex);
-    //    pthread_cond_broadcast(args->read_cond);
     pthread_cond_broadcast(&read_cond);
   }
   pthread_cond_broadcast(&read_cond);
-  //  pthread_cond_broadcast(args->read_cond); // destrava a condicao qdo morre
-
   return NULL;
 }
 
@@ -85,7 +77,10 @@ void debug_packet_struct(packet_struct *packet) {
     printf(" Class ID: %x\n", packet->method_payload->class_id);
     printf(" Method ID: %x\n", packet->method_payload->method_id);
     for (int i = 0; i < packet->method_payload->arguments_length; i++) {
-      printf("%02x ", (unsigned char)packet->method_payload->arguments_byte_array[i]);
+      printf("%02x ",
+             (unsigned char)packet->method_payload->arguments_byte_array[i]);
+      if ((i + 1) % 16 == 0)
+        printf("\n");
     }
     break;
   case HEADER:
@@ -113,64 +108,16 @@ packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
     pthread_cond_wait(&read_cond, &mutex_read);
   }
 
-  printf("LISTENER ARGS N = %d -> ", listener_args->n);
   packet_struct *packet = break_packet(listener_args->recvline);
   listener_args->n -= packet->size + 7;
-  if (listener_args->n < 0) listener_args->n = 0;
-  printf("LISTENER ARGS N = %d\n", listener_args->n);
+  if (listener_args->n < 0)
+    listener_args->n = 0;
   debug_packet_struct(packet);
 
   pthread_mutex_unlock(&mutex_read);
 
   printf("Read!\n");
   return packet;
-}
-
-unsigned char *shortstring_generator(int *length, Grammar environment) {
-  unsigned char shortstring_length = (rand() % RULE_REPETITION_INFTY) % 256;
-
-  unsigned char *result = calloc(shortstring_length + 1, sizeof(char));
-
-  result[0] = shortstring_length;
-  int length_dummy = 0;
-  for (int i = 1; i < shortstring_length + 1; i++) {
-    result[i] = decode_rule("OCTET", &length_dummy, environment)[0];
-  }
-  *length = shortstring_length + 1;
-  return result;
-}
-
-unsigned char *longstring_generator(int *length, Grammar environment) {
-  unsigned int string_length = (rand() % RULE_REPETITION_INFTY);
-  unsigned char *result = calloc(string_length + 4, sizeof(char));
-
-  int_in_char(result, string_length, 0, string_length + 4);
-  int length_dummy = 0;
-  for (int i = 4; i < string_length + 4; i++) {
-    result[i] = decode_rule("OCTET", &length_dummy, environment)[0];
-  }
-  *length = string_length + 4;
-  return result;
-}
-
-void overwrite_rule_set_length(char *rule_to_decode, char *length_rule,
-                               int length_size, Grammar grammar) {
-
-  int decoded_rule_length = 0;
-  unsigned char *decoded_rule =
-      decode_rule(rule_to_decode, &decoded_rule_length, contextful_grammar);
-
-  grammar_insert(grammar, rule_to_decode,
-                 new_grammar_entry_t(BYTE_ARRAY, (char *)decoded_rule, NULL,
-                                     decoded_rule_length, NULL));
-
-  char *decoded_length_literal = calloc(length_size, sizeof(char));
-  int_in_char((unsigned char *)decoded_length_literal, decoded_rule_length, 0,
-              length_size);
-
-  grammar_insert(grammar, length_rule,
-                 new_grammar_entry_t(BYTE_ARRAY, decoded_length_literal, NULL,
-                                     length_size, NULL));
 }
 
 enum State packet_decider(packet_struct *packet, enum State current_state,
@@ -183,49 +130,39 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
     sent_packet = decode_rule("amqp", &size, NULL);
     next_state = ConnectionStart;
   } else {
-    /* SETTING UP CONNECTION GRAMMAR */
-    contextful_grammar = generate_grammar("../grammar/grammar-connection");
-
-    grammar_insert(contextful_grammar, "short-string",
-                   new_function_grammar_entry(shortstring_generator));
-
-    grammar_insert(contextful_grammar, "long-string",
-                   new_function_grammar_entry(longstring_generator));
-    ;
-
-    /* SETTING UP METHOD MESSAGE */
-    grammar_insert(contextful_grammar, "method-id",
-                   new_string_grammar_entry("m11-method-id"));
-
-    grammar_insert(contextful_grammar, "method-properties",
-                   new_string_grammar_entry("m11-method-properties"));
-
-    /* GOING THROUGH METHOD SPECIFIC STUFF */
-    overwrite_rule_set_length("client-properties-payload",
-                              "client-properties-length", 4,
-                              contextful_grammar);
-
-    /* PLAIN AUTHENTICATION METHOD */
-    grammar_insert(contextful_grammar, "authcid",
-                   new_string_grammar_entry("\"username\""));
-
-    grammar_insert(contextful_grammar, "passwd",
-                   new_string_grammar_entry("\"password\""));
-
-    overwrite_rule_set_length("message", "message-length", 4,
-                              contextful_grammar);
-
-    /* PREPARING METHOD PACKET */
-    overwrite_rule_set_length("method-payload", "payload-size", 4,
-                              contextful_grammar);
-
-    sent_packet = decode_rule("method", &size, contextful_grammar);
+    if (packet->type == NONE)
+      return None;
+    if (packet->type == METHOD) {
+      switch (packet->method_payload->class_id) {
+      case CONNECTION:
+        sent_packet = connection_packet_decider(packet->method_payload,
+                                                (int *)&next_state, &size);
+        break;
+      case CHANNEL:
+        // Delegate
+        break;
+      case EXCHANGE:
+        // Delegate
+        break;
+      case QUEUE:
+        // Delegate
+        break;
+      case BASIC:
+        // Delegate
+        break;
+      case TX:
+        // Delegate
+        break;
+      default:
+        printf("Class not defined, invalid packet or broken packet parsing!\n");
+        break;
+      }
+    } else if (packet->type == HEADER) {
+      // Only if consuming
+    } else if (packet->type == BODY) {
+      // Only if consuming
+    }
   }
-  printf("\n===\n");
-  for (int i = 0; i < size; i++) {
-    printf("%02x ", sent_packet[i]);
-  }
-  printf("\n");
   send_packet(sockfd, sent_packet, size);
   return current_state;
 }
@@ -248,7 +185,6 @@ int fuzz(int sockfd) {
   pthread_create(&listener_thread, NULL, listener, listener_args);
 
   current_state = packet_decider(NULL, current_state, sockfd);
-  // send_protocol_header(sockfd);
 
   packet_struct *packet;
   packet = wait_response(&n, listener_args);

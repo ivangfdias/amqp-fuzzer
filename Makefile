@@ -6,7 +6,7 @@ DOC=doxygen
 
 PROGRAM=main.c
 LIB= AMQP.a libpacket.a
-OBJS= AMQP.o Connectivity.o Packet.o utils.o grammar-parser.o packet-generator.o
+OBJS= AMQP.o Packet.o utils.o grammar-parser.o packet-generator.o Connection.o
 
 #AMQP.o 
 #Consumer.o Basic.o Queue.o Channel.o Connection.o 

@@ -1,6 +1,8 @@
-#include "Connectivity.h"
+#include "Connection.h"
+#include <pthread.h>
 #include <unistd.h>
 
+#define MAXLINE 4096
 /*! \brief Envia o cabecalho do protocolo para o socket
  */
 int send_protocol_header(int sockfd);
