@@ -49,8 +49,8 @@ int main(int argc, char **argv) {
   pthread_mutex_t socket_mutex;
   pthread_t listener_thread;
 
-  if (argc < 2 || argc > 3) {
-    printf("Usage: %s [address] [port]\n", argv[0]);
+  if (argc < 2) {
+    printf("Usage: %s [address] [port] [--debug]\n", argv[0]);
     return 1;
   }
 
@@ -59,6 +59,8 @@ int main(int argc, char **argv) {
   } else {
     port = strtol(argv[2], NULL, 10);
   }
+  if (argc > 2)
+      set_grammar_decoding_debug(1);
 
   printf("Connecting to server...\n");
   socketfd = connect_to_server(argv[1], port);
