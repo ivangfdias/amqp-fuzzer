@@ -54,9 +54,41 @@ void *listener(void *void_args) {
   return NULL;
 }
 
+void debug_packet_struct(packet_struct* packet){
+	    printf("\nPacket type = ");
+	    switch(packet->type){
+		case METHOD: printf("METHOD"); break;
+		case HEADER: printf("HEADER"); break;
+		case BODY:   printf("BODY");   break;
+		case HEARTBEAT: printf("HEARTBEAT"); break;
+		case NONE: printf("NONE"); break;
+		default: 
+			   printf("%d", packet->type);break;
+	    }
+	    printf("\n");
+	    printf("Channel = %d\n", packet->channel);
+	    printf("Length = %d\n", packet->size);
+	    switch(packet->type){
+	        case METHOD: printf(" Class ID: %x\n", packet->method_payload->class_id);
+			     printf(" Method ID: %x\n", packet->method_payload->method_id);
+			     for (int i = 0; i < packet->method_payload->arguments_length; i++){
+				printf("%02x", packet->method_payload->arguments_byte_array[i]);
+			     }
+		             break;
+		case HEADER: printf("HEADER");
+			     break;
+		case BODY:   printf("BODY");
+			     break;
+		case HEARTBEAT: printf("HEARTBEAT");
+			     break;
+		case NONE: printf("NONE");
+			     break;
+	    }
+			     printf("\n");
+}
+
 packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
 
-  packet_struct *packet = malloc(sizeof(packet_struct));
   int n;
 
   pthread_mutex_lock(&mutex_read);
@@ -64,28 +96,14 @@ packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
     pthread_cond_wait(&read_cond, &mutex_read);
   }
 
-  // break_packet(listener_args->recvline, packet);
+  packet_struct *packet = break_packet(listener_args->recvline);
+
+  debug_packet_struct(packet);
 
   pthread_mutex_unlock(&mutex_read);
 
   printf("Read!\n");
   return packet;
-}
-
-// TODO move to Connectivity ?
-int send_protocol_header(int sockfd) {
-
-  char *protocol_header = calloc(8, sizeof(char));
-
-  memcpy(protocol_header, "AMQP", 4);
-  protocol_header[6] = 9;
-  protocol_header[7] = 1;
-
-  // Escreve a mensagem no socket
-  write(sockfd, protocol_header, 8);
-  free(protocol_header);
-
-  return 0;
 }
 
 unsigned char* shortstring_generator (int* length, Grammar environment){
@@ -96,11 +114,12 @@ unsigned char* shortstring_generator (int* length, Grammar environment){
 	result[0] = shortstring_length;
 	int length_dummy = 0;
 	for (int i = 1; i < shortstring_length  +1; i++){
-		result[i] = decode_rule("OCTET", &length_dummy, environment);
+		result[i] = decode_rule("OCTET", &length_dummy, environment)[0];
 	}
 	*length = shortstring_length + 1;
 	return result;
 }
+
 unsigned char* longstring_generator (int* length, Grammar environment){
 	unsigned int string_length = (rand() % RULE_REPETITION_INFTY);
 	unsigned char* result = calloc (string_length + 4, sizeof(char));
@@ -108,7 +127,7 @@ unsigned char* longstring_generator (int* length, Grammar environment){
 	int_in_char(result, string_length, 0, string_length + 4);
 	int length_dummy = 0;
 	for (int i = 4; i < string_length + 4; i++){
-		result[i] = decode_rule("OCTET", &length_dummy, environment);
+		result[i] = decode_rule("OCTET", &length_dummy, environment)[0];
 	}
 	*length = string_length + 4;
 	return result;
@@ -134,6 +153,7 @@ void overwrite_rule_set_length(char* rule_to_decode, char* length_rule, int leng
         grammar, length_rule,
         new_grammar_entry_t(BYTE_ARRAY, decoded_length_literal, NULL, length_size, NULL));
 }
+
 
 enum State packet_decider(packet_struct *packet, enum State current_state,
                           int sockfd) {
