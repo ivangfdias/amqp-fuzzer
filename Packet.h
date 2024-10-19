@@ -5,24 +5,32 @@
 
 #include "utils.h"
 
-typedef enum {NONE, METHOD, HEADER, BODY, HEARTBEAT} frame_type;
+typedef enum { NONE, METHOD, HEADER, BODY, HEARTBEAT } frame_type;
+typedef enum {
+  CONNECTION = 10,
+  CHANNEL = 20,
+  EXCHANGE = 40,
+  QUEUE = 50,
+  BASIC = 60,
+  TX = 90
+} class_enum;
 
 typedef struct {
   unsigned short class_id;
   unsigned short method_id;
-  char* arguments_byte_array;
+  char *arguments_byte_array;
   int arguments_length;
 } method_struct;
 typedef struct {
   unsigned short class_id;
   unsigned short weight;
-  unsigned long body_size;  
+  unsigned long body_size;
   unsigned short property_flags;
-  char* property_list;
+  char *property_list;
   int property_list_size;
 } header_struct;
 typedef struct {
-  char* body;
+  char *body;
   int body_length;
 } body_struct;
 
@@ -30,15 +38,13 @@ typedef struct {
   frame_type type;
   unsigned short channel;
   unsigned int size;
-  method_struct* method_payload;
-  header_struct* header_payload;
-  body_struct* body_payload;
+  method_struct *method_payload;
+  header_struct *header_payload;
+  body_struct *body_payload;
 } packet_struct /*! test */;
 /*! Breaks an application layer packet into something that makes sense for AMQP
  */
-packet_struct* break_packet(unsigned char *packet);
-
-
+packet_struct *break_packet(unsigned char *packet);
 
 unsigned char *AMQP_method_frame(short channel, int size, short packet_class,
                                  short method, unsigned char *payload);

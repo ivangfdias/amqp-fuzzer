@@ -147,13 +147,11 @@ packet_struct *break_packet(unsigned char *packet) {
   case METHOD:
     method_struct *method_payload = calloc(1, sizeof(method_struct));
 
-    //method_payload->class_id = packet[8] + (packet[9] << 4);
     method_payload->class_id = char_in_short(packet, 7);
     method_payload->method_id = char_in_short(packet, 9);
 
     method_payload->arguments_byte_array = calloc(size - 4, sizeof(char));
-    memcpy(method_payload->arguments_byte_array, packet + 7 + 4,
-           size - 4);
+    memcpy(method_payload->arguments_byte_array, packet + 7 + 4, size - 4);
 
     method_payload->arguments_length = size - 4;
 
