@@ -164,12 +164,8 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
     }
   }
 
-  for (int i = 0; i < size; i++){
-    printf("%2u ", (unsigned char)sent_packet[i]);
-    if ((i + 1) % 16 == 0) printf("\n");
-  }
-
   send_packet(sockfd, sent_packet, size);
+  printf("Sent packet!\n");
   return next_state;
 }
 
