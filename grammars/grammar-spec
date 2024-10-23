@@ -26,8 +26,8 @@ field-value         = %x74 boolean / %x62 short-short-int / %x42 short-short-uin
 boolean             = OCTET                                     ; 0 = FALSE, else TRUE
 short-short-int     = OCTET
 short-short-uint    = OCTET
-short-int           = OCTET
-long-int            = 2OCTET
+short-int           = 2OCTET
+long-int            = 4OCTET
 long-long-int       = 8OCTET
 float               = 4OCTET                                   ; IEEE-754
 double              = 8OCTET                                   ; rfc1832 XDR double
