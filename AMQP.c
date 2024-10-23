@@ -163,8 +163,14 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
       // Only if consuming
     }
   }
+
+  for (int i = 0; i < size; i++){
+    printf("%2u ", (unsigned char)sent_packet[i]);
+    if ((i + 1) % 16 == 0) printf("\n");
+  }
+
   send_packet(sockfd, sent_packet, size);
-  return current_state;
+  return next_state;
 }
 
 int fuzz(int sockfd) {
@@ -175,7 +181,7 @@ int fuzz(int sockfd) {
 
   int n;
 
-  grammar_init("../grammar/grammar-spec", "../grammar/grammar-abnf");
+  grammar_init("./grammars/grammar-spec", "./grammars/grammar-abnf");
 
   listener_struct *listener_args = malloc(sizeof(listener_struct));
 
