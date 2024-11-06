@@ -114,42 +114,55 @@ unsigned char *connection_tune_ok(int *sent_packet_size) {
 }
 
 unsigned char *connection_packet_decider(method_struct *method_data,
-                                         int *next_state,
-                                         int *sent_packet_size) {
-  if (method_data->class_id != CONNECTION) {
-    printf("Connection Packet Decider received non-Connection payload!\n");
-    printf("Received class_id = %u, expected 10\n", method_data->class_id);
-    *next_state = 0;
-    return NULL;
-  }
-  if (connection_grammar == NULL) {
-    /* SETTING UP CONNECTION GRAMMAR */
-    connection_grammar = generate_grammar("./grammars/grammar-connection");
+                                         int *next_state, int *sent_packet_size,
+                                         char *response_expected) {
 
-    grammar_insert(connection_grammar, "short-string",
-                   new_function_grammar_entry(shortstring_generator));
+  if (method_data == NULL) {
+      if (*next_state == 2){
+        printf("Connection.Open! TBI\n");
+        *next_state = 0;
+        *response_expected = 1;
+        return NULL;
+      }
+  } else {
+    if (method_data->class_id != CONNECTION) {
+      printf("Connection Packet Decider received non-Connection payload!\n");
+      printf("Received class_id = %u, expected 10\n", method_data->class_id);
+      *next_state = 0;
+      return NULL;
+    }
+    if (connection_grammar == NULL) {
+      /* SETTING UP CONNECTION GRAMMAR */
+      connection_grammar = generate_grammar("./grammars/grammar-connection");
 
-    grammar_insert(connection_grammar, "long-string",
-                   new_function_grammar_entry(longstring_generator));
-  }
+      grammar_insert(connection_grammar, "short-string",
+                     new_function_grammar_entry(shortstring_generator));
 
-  printf("Received method_id = %u\n", method_data->method_id);
-  switch (method_data->method_id) {
-  case START:
-    *next_state = 1;
-    return connection_start_ok(sent_packet_size);
-    break;
-  case TUNE:
-    *next_state = 2;
-    return connection_tune_ok(sent_packet_size);
-  case SECURE:
-  case OPEN:
-  case CLOSE:
-  case CLOSE_OK:
-  default:
-    printf("Not Implemented\n");
-    *next_state = 0;
-    return NULL;
-    break;
+      grammar_insert(connection_grammar, "long-string",
+                     new_function_grammar_entry(longstring_generator));
+    }
+
+    printf("Received method_id = %u\n", method_data->method_id);
+    switch (method_data->method_id) {
+    case START:
+      *next_state = 1;
+      *response_expected = 1;
+      return connection_start_ok(sent_packet_size);
+      break;
+    case TUNE:
+      *next_state = 2;
+
+      *response_expected = 0;
+      return connection_tune_ok(sent_packet_size);
+    case SECURE:
+    case OPEN_OK:
+    case CLOSE:
+    case CLOSE_OK:
+    default:
+      printf("Not Implemented\n");
+      *next_state = 0;
+      return NULL;
+      break;
+    }
   }
 }

@@ -1,5 +1,6 @@
 #include "Connection.h"
 #include <pthread.h>
+#include <threads.h>
 #include <unistd.h>
 
 #define MAXLINE 4096

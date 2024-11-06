@@ -4,4 +4,5 @@
 
 unsigned char *connection_packet_decider(method_struct *method_data,
                                          int *sent_packet,
-                                         int *sent_packet_size);
+                                         int *sent_packet_size,
+                                         char *response_expected);

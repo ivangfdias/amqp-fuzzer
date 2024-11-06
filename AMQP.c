@@ -22,7 +22,7 @@ enum State {
   None = 0,
   ConnectionStart,
   ConnectionTune,
-  ConnectionSecure,
+//  ConnectionSecure, unused
   ConnectionOpen,
   Connected,
   ConnectionClose,
@@ -30,35 +30,6 @@ enum State {
 };
 
 enum State current_state = None;
-
-// Necessario para os argumentos de listener
-typedef struct {
-  int socket_fd;                       // fd do socket
-  unsigned char recvline[MAXLINE + 1]; // Pacote recebido
-  int n;                               // qtd de bytes do pacote i guess?
-} listener_struct;
-
-void *listener(void *void_args) {
-
-  listener_struct *args = (listener_struct *)void_args;
-  int sockfd = args->socket_fd;
-
-  int n;
-  char recvline[MAXLINE + 1]; // Mensagem recebida do servidor
-
-  // Le a mensagem recebida no socket
-  while ((n = read(sockfd, args->recvline, MAXLINE) > 0)) {
-    args->recvline[n] = 0;
-
-    pthread_mutex_lock(&mutex_read);
-    printf("n = %d\n", n);
-    args->n = n;
-    pthread_mutex_unlock(&mutex_read);
-    pthread_cond_broadcast(&read_cond);
-  }
-  pthread_cond_broadcast(&read_cond);
-  return NULL;
-}
 
 void debug_packet_struct(packet_struct *packet) {
   printf("\nPacket type = ");
@@ -111,6 +82,60 @@ void debug_packet_struct(packet_struct *packet) {
   }
   printf("\n");
 }
+// Necessario para os argumentos de listener
+typedef struct {
+  int socket_fd;                       // fd do socket
+  unsigned char recvline[MAXLINE + 1]; // Pacote recebido
+  int n;                               // qtd de bytes do pacote i guess?
+} listener_struct;
+
+void *listener(void *void_args) {
+
+  listener_struct *args = (listener_struct *)void_args;
+  int sockfd = args->socket_fd;
+
+  int n;
+  char recvline[MAXLINE + 1]; // Mensagem recebida do servidor
+
+  printf("Listener born\n");
+  // Le a mensagem recebida no socket
+  while ((n = read(sockfd, args->recvline, MAXLINE) > 0)) {
+    printf("Listener: Got something to parse\n");
+    args->recvline[n] = 0;
+
+    // Separating necessary for when AMQP frames come in "bundles"
+    int parsed_n = 0;
+    while (parsed_n < n) {
+
+      printf("Listener: Received packet. Breaking... (%d/%d)\n", parsed_n, n);
+      packet_struct *read_packet = break_packet(args->recvline);
+      printf("Listener: Packet: \n");
+      int channel = read_packet->channel;
+      printf("Listener: Sending packet to channel %d\n", channel);
+      pthread_mutex_lock(&channel_mutexes[channel]);
+      channel_packets[channel] =
+          realloc(channel_packets[channel], sizeof(packet_struct *));
+      channel_packets[channel] = break_packet(args->recvline);
+      // memcpy(channel_packets[channel], read_packet, sizeof(packet_struct));
+      //       channel_packets[channel]
+      printf("Listener: Unlocking channel %d\n", channel);
+      pthread_mutex_unlock(&channel_mutexes[channel]);
+      printf("Listener: Signaling channel %d\n", channel);
+      pthread_cond_signal(&channel_conds[channel]);
+      parsed_n = read_packet->size + 7;
+    }
+    //   pthread_mutex_lock(&mutex_read);
+    printf("n = %d\n", n);
+    args->n = n;
+    // pthread_mutex_unlock(&mutex_read);
+    // pthread_cond_broadcast(&read_cond);
+  }
+  printf("Listener exiting!\n");
+  for (int i = 0; i < max_created_threads; i++) {
+    pthread_cancel(channels[i]);
+  }
+  return NULL;
+}
 
 packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
 
@@ -134,114 +159,175 @@ packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
 }
 
 enum State packet_decider(packet_struct *packet, enum State current_state,
-                          int sockfd) {
+                          int sockfd, char *response_expected) {
   int size = 0;
   unsigned char *sent_packet;
   enum State next_state = current_state;
 
-  if (packet == NULL) {
+  if (current_state == None) {
+    printf("No packet received, sending header\n");
     sent_packet = decode_rule("amqp", &size, NULL);
+    *response_expected = 1;
     next_state = ConnectionStart;
   } else {
-    if (packet->type == NONE)
-      return None;
-    if (packet->type == METHOD) {
-      switch (packet->method_payload->class_id) {
-      case CONNECTION:
-        sent_packet = connection_packet_decider(packet->method_payload,
-                                                (int *)&next_state, &size);
-        break;
-      case CHANNEL:
-        // Delegate
-        break;
-      case EXCHANGE:
-        // Delegate
-        break;
-      case QUEUE:
-        // Delegate
-        break;
-      case BASIC:
-        // Delegate
-        break;
-      case TX:
-        // Delegate
-        break;
-      default:
-        printf("Class not defined, invalid packet or broken packet parsing!\n");
-        break;
+
+    if (current_state == 2) {
+      sent_packet = connection_packet_decider(NULL, &next_state, &size, response_expected);
+    } else {
+
+      if (packet->type == NONE)
+        return None;
+      if (packet->type == METHOD) {
+        switch (packet->method_payload->class_id) {
+        case CONNECTION:
+          sent_packet = connection_packet_decider(packet->method_payload,
+                                                  (int *)&next_state, &size,
+                                                  response_expected);
+          break;
+        case CHANNEL:
+          // Delegate
+          break;
+        case EXCHANGE:
+          // Delegate
+          break;
+        case QUEUE:
+          // Delegate
+          break;
+        case BASIC:
+          // Delegate
+          break;
+        case TX:
+          // Delegate
+          break;
+        default:
+          printf(
+              "Class not defined, invalid packet or broken packet parsing!\n");
+          break;
+        }
+      } else if (packet->type == HEADER) {
+        // Only if consuming
+      } else if (packet->type == BODY) {
+        // Only if consuming
       }
-    } else if (packet->type == HEADER) {
-      // Only if consuming
-    } else if (packet->type == BODY) {
-      // Only if consuming
     }
   }
 
-  send_packet(sockfd, sent_packet, size);
-  printf("Sent packet!\n");
+  if (sent_packet != NULL) {
+    printf("Sending packet...\n");
+    send_packet(sockfd, sent_packet, size);
+    printf("Sent packet!\n");
+  }
   return next_state;
 }
 
 typedef struct {
   int channel_id;
-  int sockfd;               // precisa.
+  int sockfd; // precisa.
 } channel_args;
 
+thread_local char waiting_response = 0;
 void *AMQP_channel_thread(void *void_channel_args) {
+
   channel_args *args = (channel_args *)void_channel_args;
   int my_id = args->channel_id;
   int sockfd = args->sockfd; // poderia ser global se pa
   packet_struct *channel_packet = NULL;
 
-  pthread_mutex_t *mutex_read = &channel_mutexes[my_id];
-  pthread_cond_t *read_cond = &channel_conds[my_id];
+  pthread_mutex_t *my_mutex_read = &channel_mutexes[my_id];
+  pthread_cond_t *my_read_cond = &channel_conds[my_id];
 
-  pthread_mutex_lock(mutex_read);
-  while ((channel_packet = channel_packets[my_id]) == NULL) {
-    pthread_cond_wait(read_cond, mutex_read);
+  while (current_state != ConnectionClosed) {
+    pthread_mutex_lock(my_mutex_read);
+    printf("Channel %d: locked mutex. Waiting response = %d \n", my_id,
+           waiting_response);
+    while ((channel_packet = channel_packets[my_id]) == NULL) {
+      printf("Channel %d:  Waiting condition...\n", my_id);
+      if (waiting_response == 0) {
+        printf("No need to wait\n");
+        break;
+      }
+      pthread_cond_wait(my_read_cond, my_mutex_read);
+      printf("Channel %d Woke up!\n", my_id);
+    }
+    /*
+    if (current_state != None || waiting_response){
+        printf("Trying to lock mutex...\n");
+      pthread_mutex_lock(my_mutex_read);
+    }*/
+    printf("Channel %d: got condition \n", my_id);
+    if (channel_packet == NULL)
+      printf("Somehow, packet is null. Segfault expected.\n");
+    else {
+      printf("Channel %d: Packet: \n", my_id);
+      debug_packet_struct(channel_packet);
+    }
+    printf("Channel %d: Running decider... \n", my_id);
+    enum State next_state = packet_decider(channel_packet, current_state,
+                                           sockfd, &waiting_response);
+    if (next_state != NOOP) {
+      printf("Channel %d changed current_state to %d\n", my_id, next_state);
+      current_state = next_state; // use mutex, or only channel 0 can do it
+    }
+    // algo para dar free no channel_packet
+    channel_packets[my_id] = NULL;
+
+    pthread_mutex_unlock(my_mutex_read);
+    printf("Channel %d: unlocked mutex \n", my_id);
   }
-
-  enum State next_state = packet_decider(channel_packet, current_state, sockfd);
-  if (next_state != NOOP)
-    current_state = next_state; // use mutex, or only channel 0 can do it
-  // algo para dar free no channel_packet
-  channel_packets[my_id] = NULL;
-  pthread_mutex_unlock(mutex_read);
+  printf("Channel %d exiting!\n", my_id);
 }
 
 int create_channel_thread(int sockfd) {
 
   static int threads_array_size = 0;
   int local_created_threads = max_created_threads + 1;
+
   if (local_created_threads > threads_array_size) {
-    if (threads_array_size == 0)
+    if (threads_array_size == 0) {
       threads_array_size += 1;
-    else
+      channel_mutexes = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t) *
+                                                  threads_array_size);
+      channel_conds =
+          (pthread_cond_t *)malloc(sizeof(pthread_cond_t) * threads_array_size);
+      channel_packets = (packet_struct **)malloc(sizeof(packet_struct *) *
+                                                 threads_array_size);
+      channels = (pthread_t *)malloc(sizeof(pthread_t) * threads_array_size);
+    } else {
       threads_array_size = threads_array_size << 1;
 
-    channel_mutexes = (pthread_mutex_t *)reallocarray(
-        channel_mutexes, sizeof(pthread_mutex_t), threads_array_size);
-    channel_conds = (pthread_cond_t *)reallocarray(
-        channel_mutexes, sizeof(pthread_cond_t), threads_array_size);
-    channel_packets = (packet_struct **)reallocarray(
-        channel_mutexes, sizeof(packet_struct *), threads_array_size);
-    channels = (pthread_t *)reallocarray(channel_mutexes, sizeof(pthread_t),
-                                         threads_array_size);
+      channel_mutexes = (pthread_mutex_t *)reallocarray(
+          channel_mutexes, sizeof(pthread_mutex_t), threads_array_size);
+      channel_conds = (pthread_cond_t *)reallocarray(
+          channel_mutexes, sizeof(pthread_cond_t), threads_array_size);
+      channel_packets = (packet_struct **)reallocarray(
+          channel_mutexes, sizeof(packet_struct *), threads_array_size);
+      channels = (pthread_t *)reallocarray(channel_mutexes, sizeof(pthread_t),
+                                           threads_array_size);
+    }
   }
 
   pthread_mutex_t novo_mutex = PTHREAD_MUTEX_INITIALIZER;
-  pthread_cond_t nova_cond = PTHREAD_COND_INITIALIZER;  
+  pthread_cond_t nova_cond = PTHREAD_COND_INITIALIZER;
 
   channel_mutexes[max_created_threads] = novo_mutex;
   channel_conds[max_created_threads] = nova_cond;
   channel_packets[max_created_threads] = NULL;
+  printf("DID I DO SOMETHING WRONG??? ");
+  if (channel_packets[max_created_threads] != NULL)
+    printf(" Yes. \n");
+  else
+    printf(" No, packet %d is null. \n", max_created_threads);
 
-  channel_args* novo_args = malloc(1 * sizeof(channel_args));
+  channel_args *novo_args = malloc(1 * sizeof(channel_args));
   novo_args->channel_id = max_created_threads;
   novo_args->sockfd = sockfd;
 
-  pthread_create(&channels[max_created_threads], NULL, AMQP_channel_thread, (void*) novo_args);
+  pthread_mutex_lock(&novo_mutex);
+  pthread_create(&channels[max_created_threads], NULL, AMQP_channel_thread,
+                 (void *)novo_args);
+  max_created_threads = local_created_threads;
 
+  printf("threads_array_size = %d\n", threads_array_size);
   return max_created_threads;
 }
 
@@ -264,27 +350,23 @@ int fuzz(int sockfd) {
   pthread_create(&listener_thread, NULL, listener, listener_args);
 
   // Create Channel 0 thread
+  printf("Main: Creating Connection channel thread\n");
   create_channel_thread(sockfd);
+  printf("Main: Sanity Check\n");
+  printf("Main: Created Channels: %d \n", max_created_threads);
+  pthread_cond_signal(&channel_conds[0]);
 
-  current_state = packet_decider(NULL, current_state, sockfd);
+  printf("Main: Joining threads...\n");
 
-  packet_struct *packet;
-  packet = wait_response(&n, listener_args);
-
-  current_state = packet_decider(packet, current_state, sockfd);
-  packet = wait_response(&n, listener_args);
-
-  while (current_state != None) {
-    current_state = packet_decider(packet, current_state, sockfd);
-    packet = wait_response(&n, listener_args);
-  }
   pthread_join(listener_thread, NULL);
-
   int joined_channels = 0;
   int i = 0;
   while (joined_channels < max_created_threads) {
+    printf("Main: joining channel %d\n", i);
     pthread_join(channels[i], NULL);
+    joined_channels++;
     i = (i + 1) % max_created_threads;
   }
+  printf("Main: Finished! Returning...\n");
   return 0;
 }
