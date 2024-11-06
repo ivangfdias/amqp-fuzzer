@@ -98,17 +98,18 @@ void *listener(void *void_args) {
   int n;
   char recvline[MAXLINE + 1]; // Mensagem recebida do servidor
 
-  printf("Listener born\n");
+  fuzz_debug_printf("Listener born\n");
   // Le a mensagem recebida no socket
   while ((n = read(sockfd, args->recvline, MAXLINE) > 0)) {
-    printf("Listener: Got something to parse\n");
+    fuzz_debug_printf("Listener: Got something to parse\n");
     args->recvline[n] = 0;
 
     // Separating necessary for when AMQP frames come in "bundles"
     int parsed_n = 0;
     while (parsed_n < n) {
 
-      printf("Listener: Received packet. Breaking... (%d/%d)\n", parsed_n, n);
+      fuzz_debug_printf("Listener: Received packet. Breaking... (%d/%d)\n",
+                        parsed_n, n);
       packet_struct *read_packet = break_packet(args->recvline);
       int channel = read_packet->channel;
       pthread_mutex_lock(&channel_mutexes[channel]);
@@ -119,10 +120,10 @@ void *listener(void *void_args) {
       pthread_cond_signal(&channel_conds[channel]);
       parsed_n = read_packet->size + 7;
     }
-    printf("n = %d\n", n);
+    fuzz_debug_printf("n = %d\n", n);
     args->n = n;
   }
-  printf("Listener exiting!\n");
+  fuzz_debug_printf("Listener exiting!\n");
   for (int i = 0; i < max_created_threads; i++) {
     pthread_cancel(channels[i]);
     pthread_cond_signal(&channel_conds[i]);
@@ -147,7 +148,7 @@ packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
 
   pthread_mutex_unlock(&mutex_read);
 
-  printf("Read!\n");
+  fuzz_debug_printf("Read!\n");
   return packet;
 }
 
@@ -158,7 +159,7 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
   enum State next_state = current_state;
 
   if (current_state == None) {
-    printf("No packet received, sending header\n");
+    fuzz_debug_printf("No packet received, sending header\n");
     sent_packet = decode_rule("amqp", &size, NULL);
     *response_expected = 1;
     next_state = ConnectionStart;
@@ -167,11 +168,11 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
     if (packet == NULL) {
 
       if (current_state == 2 || current_state == 5 || current_state == 6) {
-          printf("Baguncinha!\n");
+        fuzz_debug_printf("Baguncinha!\n");
         sent_packet = connection_packet_decider(NULL, &next_state, &size,
                                                 response_expected);
-        printf("Baguncei!\n");
-      } 
+        fuzz_debug_printf("Baguncei!\n");
+      }
     } else {
 
       if (packet->type == NONE)
@@ -199,7 +200,7 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
           // Delegate
           break;
         default:
-          printf(
+          fuzz_debug_printf(
               "Class not defined, invalid packet or broken packet parsing!\n");
           break;
         }
@@ -212,9 +213,9 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
   }
 
   if (sent_packet != NULL) {
-    printf("Sending packet...\n");
+    fuzz_debug_printf("Sending packet...\n");
     send_packet(sockfd, sent_packet, size);
-    printf("Sent packet!\n");
+    fuzz_debug_printf("Sent packet!\n");
   }
   return next_state;
 }
@@ -237,18 +238,18 @@ void *AMQP_channel_thread(void *void_channel_args) {
 
   while (current_state != ConnectionClosed) {
     pthread_mutex_lock(my_mutex_read);
-    printf("Channel %d: locked mutex. Waiting response = %d \n", my_id,
-           waiting_response);
+    fuzz_debug_printf("Channel %d: locked mutex. Waiting response = %d \n",
+                      my_id, waiting_response);
     while ((channel_packet = channel_packets[my_id]) == NULL) {
-      printf("Channel %d:  Waiting condition...\n", my_id);
+      fuzz_debug_printf("Channel %d:  Waiting condition...\n", my_id);
       if (waiting_response == 0)
         break;
 
       pthread_cond_wait(my_read_cond, my_mutex_read);
     }
-    printf("Channel %d: Condition achieved\n", my_id);
+    fuzz_debug_printf("Channel %d: Condition achieved\n", my_id);
     if (channel_packet == NULL)
-        printf("Packet = NULL\n");
+      fuzz_debug_printf("Packet = NULL\n");
     enum State next_state = packet_decider(channel_packet, current_state,
                                            sockfd, &waiting_response);
     /*
@@ -259,7 +260,8 @@ void *AMQP_channel_thread(void *void_channel_args) {
                                   &waiting_response);
     }*/
     if (next_state != NOOP) {
-      printf("Channel %d changed current_state to %d\n", my_id, next_state);
+      fuzz_debug_printf("Channel %d changed current_state to %d\n", my_id,
+                        next_state);
       current_state = next_state; // use mutex, or only channel 0 can do it
     }
     // algo para dar free no channel_packet
@@ -267,9 +269,9 @@ void *AMQP_channel_thread(void *void_channel_args) {
     channel_packets[my_id] = NULL;
 
     pthread_mutex_unlock(my_mutex_read);
-    printf("Channel %d: unlocked mutex \n", my_id);
+    fuzz_debug_printf("Channel %d: unlocked mutex \n", my_id);
   }
-  printf("Channel %d exiting!\n", my_id);
+  fuzz_debug_printf("Channel %d exiting!\n", my_id);
   pthread_exit(0);
 }
 
@@ -308,11 +310,6 @@ int create_channel_thread(int sockfd) {
   channel_mutexes[max_created_threads] = novo_mutex;
   channel_conds[max_created_threads] = nova_cond;
   channel_packets[max_created_threads] = NULL;
-  printf("DID I DO SOMETHING WRONG??? ");
-  if (channel_packets[max_created_threads] != NULL)
-    printf(" Yes. \n");
-  else
-    printf(" No, packet %d is null. \n", max_created_threads);
 
   channel_args *novo_args = malloc(1 * sizeof(channel_args));
   novo_args->channel_id = max_created_threads;
@@ -323,7 +320,7 @@ int create_channel_thread(int sockfd) {
                  (void *)novo_args);
   max_created_threads = local_created_threads;
 
-  printf("threads_array_size = %d\n", threads_array_size);
+  fuzz_debug_printf("threads_array_size = %d\n", threads_array_size);
   return max_created_threads;
 }
 
@@ -337,6 +334,8 @@ int fuzz(int sockfd) {
 
   grammar_init("./grammars/grammar-spec", "./grammars/grammar-abnf");
 
+  srand(time(NULL));
+  printf("Main: Creating listener thread...\n");
   // Create listener thread
   listener_struct *listener_args = malloc(sizeof(listener_struct));
 
@@ -348,21 +347,19 @@ int fuzz(int sockfd) {
   // Create Channel 0 thread
   printf("Main: Creating Connection channel thread\n");
   create_channel_thread(sockfd);
-  printf("Main: Sanity Check\n");
-  printf("Main: Created Channels: %d \n", max_created_threads);
   pthread_cond_signal(&channel_conds[0]);
 
-  printf("Main: Joining threads...\n");
-
   pthread_join(listener_thread, NULL);
+  printf("Main: Connection closed.\n");
   int joined_channels = 0;
   int i = 0;
   while (joined_channels < max_created_threads) {
-    printf("Main: joining channel %d\n", i);
     pthread_join(channels[i], NULL);
     joined_channels++;
     i = (i + 1) % max_created_threads;
+    printf("Main: Closed %d/%d channels...\n", joined_channels,
+           max_created_threads);
   }
-  printf("Main: Finished! Returning...\n");
+  printf("Main: Finished.\n");
   return 0;
 }

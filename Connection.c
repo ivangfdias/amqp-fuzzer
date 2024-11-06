@@ -160,7 +160,7 @@ unsigned char *connection_open(int *sent_packet_size) {
 }
 
 unsigned char *connection_close(int *sent_packet_size) {
-    printf("Connection close!!\n");
+  fuzz_debug_printf("Connection close!!\n");
 
   Grammar mutable_grammar = copy_grammar(connection_grammar);
 
@@ -203,18 +203,18 @@ unsigned char *connection_packet_decider(method_struct *method_data,
                                          int *next_state, int *sent_packet_size,
                                          char *response_expected) {
 
-  printf("Connection:");
-  printf("\n Method data pointer: %lu\n", (unsigned long int)method_data);
-  printf("\n Next_state: %d\n", *next_state);
   if (method_data == NULL && *next_state == 5) {
     *next_state = 7;
     *response_expected = 1;
+    printf("Channel 0: Sending CLOSE\n");
     return connection_close(sent_packet_size);
   } else {
 
     if (method_data->class_id != CONNECTION) {
-      printf("Connection Packet Decider received non-Connection payload!\n");
-      printf("Received class_id = %u, expected 10\n", method_data->class_id);
+      fuzz_debug_printf(
+          "Connection Packet Decider received non-Connection payload!\n");
+      fuzz_debug_printf("Received class_id = %u, expected 10\n",
+                        method_data->class_id);
       *next_state = 7;
       return NULL;
     }
@@ -229,11 +229,12 @@ unsigned char *connection_packet_decider(method_struct *method_data,
                      new_function_grammar_entry(longstring_generator));
     }
 
-    printf("Received method_id = %u\n", method_data->method_id);
+    printf("Channel 0: Received method_id = %u\n", method_data->method_id);
     switch (method_data->method_id) {
     case START:
       *next_state = 1;
       *response_expected = 1;
+      printf("Channel 0: Sending START_OK\n");
       return connection_start_ok(sent_packet_size);
       break;
     case TUNE:
@@ -247,23 +248,25 @@ unsigned char *connection_packet_decider(method_struct *method_data,
       unsigned char *open = connection_open(&open_length);
 
       *sent_packet_size = tune_ok_length + open_length;
+      printf("Channel 0: Sending TUNE_OK + OPEN\n");
       return packet_append(tune_ok, open);
     case SECURE:
     case OPEN_OK:
-      printf("Connected!!!\n");
+      fuzz_debug_printf("Connected!!!\n");
       *next_state = 5;
       *response_expected = 0;
       return NULL;
     case CLOSE:
       *next_state = 7;
       *response_expected = 1;
+      printf("Channel 0: Sending CLOSE_OK\n");
       return connection_close_ok(sent_packet_size);
     case CLOSE_OK:
       *next_state = 8;
       *response_expected = 1;
       return NULL;
     default:
-      printf("Not Implemented\n");
+      printf("[ERROR] Not Implemented\n");
       *next_state = 0;
       return NULL;
       break;

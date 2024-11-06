@@ -103,7 +103,7 @@ char verify_length(unsigned char *packet, int length) {
   }
 
   if ((unsigned char)packet[index] != 0xce) {
-    printf("Octet at %d: %2x\n", index, (unsigned char)packet[index]);
+    fuzz_debug_printf("Octet at %d: %2x\n", index, (unsigned char)packet[index]);
     return 1;
   }
   return 0;
@@ -120,12 +120,12 @@ unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2){
 
     free(packet1);
     free(packet2);
-    printf("Appended packet: \n");
+    fuzz_debug_printf("Appended packet: \n");
     for (int i = 0; i < total_length; i++){
 
-        printf("%2x ", appended[i]);
+        fuzz_debug_printf("%2x ", appended[i]);
         if ((i + 1) % 16 == 0)
-            printf("\n");
+            fuzz_debug_printf("\n");
     }
     return appended;
 

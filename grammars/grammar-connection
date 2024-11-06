@@ -16,7 +16,7 @@ m11-method-id           = %x00.0B
 m11-method-properties = client-properties mechanism response locale
 client-properties = client-properties-length client-properties-payload
 
-;client-properties-payload = %d07 "product" %x53 product-value %d07 "version" %x53 version-value %d08 "platform" %x53 platform-value
+; client-properties-payload = %d07 "product" %x53 product-value %d07 "version" %x53 version-value %d08 "platform" %x53 platform-value
 
 client-properties-payload = %x00.56
 
@@ -29,18 +29,20 @@ response = message-length message
 locale = %d5 %x65.6E.5F.55.53 ; en_US
 
 m31-method-id           = %x00.1F
-m31-method-properties   = channel-max frame-max heartbeat
+m31-method-properties   = channel-max frame-max heartbeat-time
 channel-max             = short-int
 frame-max               = long-int
-heartbeat               = short-int / %x00.00
+heartbeat-time          = short-int 
 
 m40-method-id           = %x00.28
 m40-method-properties   = virtual-host %d0 %d0
 
 m50-method-id           = %x00.32
-m50-method-properties   = reply-code reply-text m50-class-id m50-method-id
-m50-class-id            = class-id  ; To be overwritten
-m50-method-id           = method-id ; To be overwritten
+m50-method-properties   = reply-code reply-text m50-class-id-val m50-method-id-val
+m50-class-id-val        = class-id  ; To be overwritten
+m50-method-id-val       = method-id ; To be overwritten
+reply-code              = short-int
+reply-text              = shortstr
 
 m51-method-id           = %x00.33
 

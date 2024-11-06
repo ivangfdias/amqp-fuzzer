@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
   pthread_t listener_thread;
 
   if (argc < 2) {
-    printf("Usage: %s [address] [port] [--debug]\n", argv[0]);
+    printf("Usage: %s [address] [port] [-v[v]]\n", argv[0]);
     return 1;
   }
 
@@ -59,13 +59,19 @@ int main(int argc, char **argv) {
   } else {
     port = strtol(argv[2], NULL, 10);
   }
-  if (argc > 2)
+  if (argc > 2) {
+    if (strcmp(argv[3], "-vv") == 0) {
+
       set_grammar_decoding_debug(1);
+      set_fuzzing_debug(1);
+    } else if (strcmp(argv[3], "-v") == 0)
+      set_fuzzing_debug(1);
+  }
 
   printf("Connecting to server...\n");
   socketfd = connect_to_server(argv[1], port);
 
-  printf("Sending header message...\n");
+  printf("Starting fuzzing tests...\n");
   fuzz(socketfd);
 
   return 0;

@@ -1,3 +1,5 @@
+#ifndef PACKET_H
+#define PACKET_H
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,3 +74,4 @@ unsigned char *get_arguments(unsigned char *src);
 void free_packet_struct(packet_struct* packet);
 
 char verify_length(unsigned char *packet, int length);
+#endif
