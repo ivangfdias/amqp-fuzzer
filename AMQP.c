@@ -14,16 +14,19 @@ static Grammar contextful_grammar = NULL;
 pthread_mutex_t *channel_mutexes = NULL;
 pthread_cond_t *channel_conds = NULL;
 packet_struct **channel_packets = NULL;
+pthread_t *channels = NULL;
+int max_created_threads = 0;
 
 enum State {
-  NOOP = -1; None = 0,
-             ConnectionStart,
-             ConnectionTune,
-             ConnectionSecure,
-             ConnectionOpen,
-             Connected,
-             ConnectionClose,
-             ConnectionClosed
+  NOOP = -1,
+  None = 0,
+  ConnectionStart,
+  ConnectionTune,
+  ConnectionSecure,
+  ConnectionOpen,
+  Connected,
+  ConnectionClose,
+  ConnectionClosed
 };
 
 enum State current_state = None;
@@ -181,10 +184,7 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
 
 typedef struct {
   int channel_id;
-  packet_struct *packet;    // precisa??
-  enum State current_state; // precisa?
   int sockfd;               // precisa.
-  int *ret_val;
 } channel_args;
 
 void *AMQP_channel_thread(void *void_channel_args) {
@@ -209,6 +209,42 @@ void *AMQP_channel_thread(void *void_channel_args) {
   pthread_mutex_unlock(mutex_read);
 }
 
+int create_channel_thread(int sockfd) {
+
+  static int threads_array_size = 0;
+  int local_created_threads = max_created_threads + 1;
+  if (local_created_threads > threads_array_size) {
+    if (threads_array_size == 0)
+      threads_array_size += 1;
+    else
+      threads_array_size = threads_array_size << 1;
+
+    channel_mutexes = (pthread_mutex_t *)reallocarray(
+        channel_mutexes, sizeof(pthread_mutex_t), threads_array_size);
+    channel_conds = (pthread_cond_t *)reallocarray(
+        channel_mutexes, sizeof(pthread_cond_t), threads_array_size);
+    channel_packets = (packet_struct **)reallocarray(
+        channel_mutexes, sizeof(packet_struct *), threads_array_size);
+    channels = (pthread_t *)reallocarray(channel_mutexes, sizeof(pthread_t),
+                                         threads_array_size);
+  }
+
+  pthread_mutex_t novo_mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_cond_t nova_cond = PTHREAD_COND_INITIALIZER;  
+
+  channel_mutexes[max_created_threads] = novo_mutex;
+  channel_conds[max_created_threads] = nova_cond;
+  channel_packets[max_created_threads] = NULL;
+
+  channel_args* novo_args = malloc(1 * sizeof(channel_args));
+  novo_args->channel_id = max_created_threads;
+  novo_args->sockfd = sockfd;
+
+  pthread_create(&channels[max_created_threads], NULL, AMQP_channel_thread, (void*) novo_args);
+
+  return max_created_threads;
+}
+
 int fuzz(int sockfd) {
 
   pthread_t listener_thread;
@@ -219,12 +255,16 @@ int fuzz(int sockfd) {
 
   grammar_init("./grammars/grammar-spec", "./grammars/grammar-abnf");
 
+  // Create listener thread
   listener_struct *listener_args = malloc(sizeof(listener_struct));
 
   listener_args->socket_fd = sockfd;
   listener_args->n = 0;
 
   pthread_create(&listener_thread, NULL, listener, listener_args);
+
+  // Create Channel 0 thread
+  create_channel_thread(sockfd);
 
   current_state = packet_decider(NULL, current_state, sockfd);
 
@@ -240,5 +280,11 @@ int fuzz(int sockfd) {
   }
   pthread_join(listener_thread, NULL);
 
+  int joined_channels = 0;
+  int i = 0;
+  while (joined_channels < max_created_threads) {
+    pthread_join(channels[i], NULL);
+    i = (i + 1) % max_created_threads;
+  }
   return 0;
 }
