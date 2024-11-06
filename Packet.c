@@ -109,6 +109,29 @@ char verify_length(unsigned char *packet, int length) {
   return 0;
 }
 
+unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2){
+    int length1 = char_in_int(packet1, 3) + 8;
+    int length2 = char_in_int(packet2, 3) + 8;
+    int total_length = length1 + length2;
+    unsigned char* appended = calloc(total_length, sizeof(char));
+
+    memcpy(appended, packet1, length1);
+    memcpy(appended + length1, packet2, length2);
+
+    free(packet1);
+    free(packet2);
+    printf("Appended packet: \n");
+    for (int i = 0; i < total_length; i++){
+
+        printf("%2x ", appended[i]);
+        if ((i + 1) % 16 == 0)
+            printf("\n");
+    }
+    return appended;
+
+
+}
+
 void free_packet_struct(packet_struct *packet) {
   switch (packet->type) {
   case METHOD:
@@ -130,12 +153,10 @@ void free_packet_struct(packet_struct *packet) {
 
 packet_struct *break_packet(unsigned char *packet) {
 
-  printf("BREAK_PACKET\n");
   packet_struct *result = calloc(1, sizeof(packet_struct));
   frame_type type = packet[0];
   short channel = char_in_short(packet, 1);
   unsigned int size = char_in_int(packet, 3);
-  printf("SIZE: %4x\n", size);
   if (packet[7 + size] != 0xCE) {
     result->type = NONE;
     return result;
@@ -168,6 +189,5 @@ packet_struct *break_packet(unsigned char *packet) {
   default:
     break;
   }
-  printf("assigning\n");
   return result;
 };

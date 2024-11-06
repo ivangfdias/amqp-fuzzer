@@ -93,7 +93,20 @@ unsigned char *connection_start_ok(int *sent_packet_size) {
   return result;
 }
 
-unsigned char *connection_tune_ok(int *sent_packet_size) {
+unsigned char *connection_tune_ok(int *sent_packet_size,
+                                  method_struct *method_data) {
+
+  /* GETTING INFORMATION FROM METHOD DATA */
+  int channel_max = 0;
+  int frame_max = 0;
+
+  int received_channel_max =
+      char_in_short((unsigned char *)method_data->arguments_byte_array, 0);
+  int received_frame_max =
+      char_in_int((unsigned char *)method_data->arguments_byte_array, 2);
+
+  channel_max = rand() % (received_channel_max + 1); // enable overflow
+  frame_max = rand() % (received_frame_max + 1);// enable overflow
 
   Grammar mutable_grammar = copy_grammar(connection_grammar);
 
@@ -104,6 +117,39 @@ unsigned char *connection_tune_ok(int *sent_packet_size) {
   grammar_insert(mutable_grammar, "method-properties",
                  new_string_grammar_entry("m31-method-properties"));
 
+  /* GOING THROUGH METHOD SPECIFIC STUFF */
+  unsigned char *frame_max_char = calloc(4, sizeof(char));
+  int_in_char(frame_max_char, frame_max, 0, 4);
+  grammar_insert(mutable_grammar, "frame-max",
+                 new_byte_array_grammar_entry((char *)frame_max_char, 4));
+  unsigned char *channel_max_char = calloc(2, sizeof(char));
+  short_in_char(channel_max_char, channel_max, 0, 2);
+  grammar_insert(mutable_grammar, "channel-max",
+                 new_byte_array_grammar_entry((char *)channel_max_char, 2));
+
+  /* PREPARING METHOD PACKET */
+  overwrite_rule_set_length("method-payload", "payload-size", 4,
+                            mutable_grammar);
+  unsigned char *result =
+      decode_rule("method", sent_packet_size, mutable_grammar);
+
+  return result;
+}
+
+unsigned char *connection_open(int *sent_packet_size) {
+
+  Grammar mutable_grammar = copy_grammar(connection_grammar);
+
+  /* SETTING UP METHOD MESSAGE */
+  grammar_insert(mutable_grammar, "method-id",
+                 new_string_grammar_entry("m40-method-id"));
+
+  grammar_insert(mutable_grammar, "method-properties",
+                 new_string_grammar_entry("m40-method-properties"));
+
+  /* GOING THROUGH METHOD SPECIFIC STUFF */
+  grammar_insert(mutable_grammar, "virtual-host",
+                 new_string_grammar_entry("\%x01.2F"));
   /* PREPARING METHOD PACKET */
   overwrite_rule_set_length("method-payload", "payload-size", 4,
                             mutable_grammar);
@@ -118,12 +164,12 @@ unsigned char *connection_packet_decider(method_struct *method_data,
                                          char *response_expected) {
 
   if (method_data == NULL) {
-      if (*next_state == 2){
-        printf("Connection.Open! TBI\n");
-        *next_state = 0;
-        *response_expected = 1;
-        return NULL;
-      }
+    if (*next_state == 2) {
+
+      *next_state = 3;
+      *response_expected = 1;
+      return connection_open(sent_packet_size);
+    }
   } else {
     if (method_data->class_id != CONNECTION) {
       printf("Connection Packet Decider received non-Connection payload!\n");
@@ -150,12 +196,20 @@ unsigned char *connection_packet_decider(method_struct *method_data,
       return connection_start_ok(sent_packet_size);
       break;
     case TUNE:
-      *next_state = 2;
+      *next_state = 3;
 
-      *response_expected = 0;
-      return connection_tune_ok(sent_packet_size);
+      *response_expected = 1;
+
+      int tune_ok_length = 0;
+      unsigned char *tune_ok = connection_tune_ok(&tune_ok_length, method_data);
+      int open_length = 0;
+      unsigned char *open = connection_open(&open_length);
+
+      *sent_packet_size = tune_ok_length + open_length;
+      return packet_append(tune_ok, open);
     case SECURE:
     case OPEN_OK:
+      printf("Connected!!!\n");
     case CLOSE:
     case CLOSE_OK:
     default:

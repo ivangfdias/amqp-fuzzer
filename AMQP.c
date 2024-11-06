@@ -109,30 +109,22 @@ void *listener(void *void_args) {
 
       printf("Listener: Received packet. Breaking... (%d/%d)\n", parsed_n, n);
       packet_struct *read_packet = break_packet(args->recvline);
-      printf("Listener: Packet: \n");
       int channel = read_packet->channel;
-      printf("Listener: Sending packet to channel %d\n", channel);
       pthread_mutex_lock(&channel_mutexes[channel]);
       channel_packets[channel] =
           realloc(channel_packets[channel], sizeof(packet_struct *));
       channel_packets[channel] = break_packet(args->recvline);
-      // memcpy(channel_packets[channel], read_packet, sizeof(packet_struct));
-      //       channel_packets[channel]
-      printf("Listener: Unlocking channel %d\n", channel);
       pthread_mutex_unlock(&channel_mutexes[channel]);
-      printf("Listener: Signaling channel %d\n", channel);
       pthread_cond_signal(&channel_conds[channel]);
       parsed_n = read_packet->size + 7;
     }
-    //   pthread_mutex_lock(&mutex_read);
     printf("n = %d\n", n);
     args->n = n;
-    // pthread_mutex_unlock(&mutex_read);
-    // pthread_cond_broadcast(&read_cond);
   }
   printf("Listener exiting!\n");
   for (int i = 0; i < max_created_threads; i++) {
     pthread_cancel(channels[i]);
+    pthread_cond_signal(&channel_conds[i]);
   }
   return NULL;
 }
@@ -249,11 +241,6 @@ void *AMQP_channel_thread(void *void_channel_args) {
       pthread_cond_wait(my_read_cond, my_mutex_read);
       printf("Channel %d Woke up!\n", my_id);
     }
-    /*
-    if (current_state != None || waiting_response){
-        printf("Trying to lock mutex...\n");
-      pthread_mutex_lock(my_mutex_read);
-    }*/
     printf("Channel %d: got condition \n", my_id);
     if (channel_packet == NULL)
       printf("Somehow, packet is null. Segfault expected.\n");

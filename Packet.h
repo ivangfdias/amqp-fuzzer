@@ -64,6 +64,9 @@ char send_packet(int connfd, unsigned char *packet, long size);
 int add_string_entry(unsigned char *dest, char field_size,
                      unsigned char *field_contents, int extra_info, int index);
 
+/*! Appends two packets, frees them, and returns a string containing the appended packets.
+ */
+unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2);
 unsigned char *get_arguments(unsigned char *src);
 
 char verify_length(unsigned char *packet, int length);
