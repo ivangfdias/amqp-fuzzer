@@ -20,13 +20,14 @@ int max_created_threads = 0;
 enum State {
   NOOP = -1,
   None = 0,
-  ConnectionStart,
-  ConnectionTune,
-//  ConnectionSecure, unused
-  ConnectionOpen,
-  Connected,
-  ConnectionClose,
-  ConnectionClosed
+  ConnectionStart = 1,
+  ConnectionTune = 2,
+  //  ConnectionSecure, unused
+  ConnectionOpen = 4,
+  Connected = 5,
+  ConnectionClose = 6,
+  ConnectionCloseOK = 7,
+  ConnectionClosed = 8
 };
 
 enum State current_state = None;
@@ -163,8 +164,14 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
     next_state = ConnectionStart;
   } else {
 
-    if (current_state == 2) {
-      sent_packet = connection_packet_decider(NULL, &next_state, &size, response_expected);
+    if (packet == NULL) {
+
+      if (current_state == 2 || current_state == 5 || current_state == 6) {
+          printf("Baguncinha!\n");
+        sent_packet = connection_packet_decider(NULL, &next_state, &size,
+                                                response_expected);
+        printf("Baguncei!\n");
+      } 
     } else {
 
       if (packet->type == NONE)
@@ -234,34 +241,36 @@ void *AMQP_channel_thread(void *void_channel_args) {
            waiting_response);
     while ((channel_packet = channel_packets[my_id]) == NULL) {
       printf("Channel %d:  Waiting condition...\n", my_id);
-      if (waiting_response == 0) {
-        printf("No need to wait\n");
+      if (waiting_response == 0)
         break;
-      }
+
       pthread_cond_wait(my_read_cond, my_mutex_read);
-      printf("Channel %d Woke up!\n", my_id);
     }
-    printf("Channel %d: got condition \n", my_id);
+    printf("Channel %d: Condition achieved\n", my_id);
     if (channel_packet == NULL)
-      printf("Somehow, packet is null. Segfault expected.\n");
-    else {
-      printf("Channel %d: Packet: \n", my_id);
-      debug_packet_struct(channel_packet);
-    }
-    printf("Channel %d: Running decider... \n", my_id);
+        printf("Packet = NULL\n");
     enum State next_state = packet_decider(channel_packet, current_state,
                                            sockfd, &waiting_response);
+    /*
+    if (my_id == 0 && current_state == 6) {
+      // do something
+      current_state = ConnectionClose;
+      next_state = packet_decider(channel_packet, current_state, sockfd,
+                                  &waiting_response);
+    }*/
     if (next_state != NOOP) {
       printf("Channel %d changed current_state to %d\n", my_id, next_state);
       current_state = next_state; // use mutex, or only channel 0 can do it
     }
     // algo para dar free no channel_packet
+    // free_packet_struct(channel_packets[my_id]);
     channel_packets[my_id] = NULL;
 
     pthread_mutex_unlock(my_mutex_read);
     printf("Channel %d: unlocked mutex \n", my_id);
   }
   printf("Channel %d exiting!\n", my_id);
+  pthread_exit(0);
 }
 
 int create_channel_thread(int sockfd) {

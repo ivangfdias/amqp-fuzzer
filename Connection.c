@@ -106,7 +106,7 @@ unsigned char *connection_tune_ok(int *sent_packet_size,
       char_in_int((unsigned char *)method_data->arguments_byte_array, 2);
 
   channel_max = rand() % (received_channel_max + 1); // enable overflow
-  frame_max = rand() % (received_frame_max + 1);// enable overflow
+  frame_max = rand() % (received_frame_max + 1);     // enable overflow
 
   Grammar mutable_grammar = copy_grammar(connection_grammar);
 
@@ -159,22 +159,63 @@ unsigned char *connection_open(int *sent_packet_size) {
   return result;
 }
 
+unsigned char *connection_close(int *sent_packet_size) {
+    printf("Connection close!!\n");
+
+  Grammar mutable_grammar = copy_grammar(connection_grammar);
+
+  /* SETTING UP METHOD MESSAGE */
+  grammar_insert(mutable_grammar, "method-id",
+                 new_string_grammar_entry("m50-method-id"));
+
+  grammar_insert(mutable_grammar, "method-properties",
+                 new_string_grammar_entry("m50-method-properties"));
+
+  /* PREPARING METHOD PACKET */
+  overwrite_rule_set_length("method-payload", "payload-size", 4,
+                            mutable_grammar);
+  unsigned char *result =
+      decode_rule("method", sent_packet_size, mutable_grammar);
+
+  return result;
+}
+
+unsigned char *connection_close_ok(int *sent_packet_size) {
+
+  Grammar mutable_grammar = copy_grammar(connection_grammar);
+
+  /* SETTING UP METHOD MESSAGE */
+  grammar_insert(mutable_grammar, "method-id",
+                 new_string_grammar_entry("m51-method-id"));
+
+  grammar_insert(mutable_grammar, "method-properties",
+                 new_string_grammar_entry("m51-method-properties"));
+  /* PREPARING METHOD PACKET */
+  overwrite_rule_set_length("method-payload", "payload-size", 4,
+                            mutable_grammar);
+  unsigned char *result =
+      decode_rule("method", sent_packet_size, mutable_grammar);
+
+  return result;
+}
+
 unsigned char *connection_packet_decider(method_struct *method_data,
                                          int *next_state, int *sent_packet_size,
                                          char *response_expected) {
 
-  if (method_data == NULL) {
-    if (*next_state == 2) {
-
-      *next_state = 3;
-      *response_expected = 1;
-      return connection_open(sent_packet_size);
-    }
+  printf("Connection:");
+  printf("\n Method data pointer: %lu\n", (unsigned long int)method_data);
+  printf("\n Next_state: %d\n", *next_state);
+  if (method_data == NULL && *next_state == 5) {
+    *next_state = 7;
+    *response_expected = 1;
+    return connection_close(sent_packet_size);
   } else {
+
     if (method_data->class_id != CONNECTION) {
       printf("Connection Packet Decider received non-Connection payload!\n");
       printf("Received class_id = %u, expected 10\n", method_data->class_id);
-      *next_state = 0;
+      *next_state = 7;
       return NULL;
     }
     if (connection_grammar == NULL) {
@@ -210,8 +251,17 @@ unsigned char *connection_packet_decider(method_struct *method_data,
     case SECURE:
     case OPEN_OK:
       printf("Connected!!!\n");
+      *next_state = 5;
+      *response_expected = 0;
+      return NULL;
     case CLOSE:
+      *next_state = 7;
+      *response_expected = 1;
+      return connection_close_ok(sent_packet_size);
     case CLOSE_OK:
+      *next_state = 8;
+      *response_expected = 1;
+      return NULL;
     default:
       printf("Not Implemented\n");
       *next_state = 0;

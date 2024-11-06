@@ -69,4 +69,6 @@ int add_string_entry(unsigned char *dest, char field_size,
 unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2);
 unsigned char *get_arguments(unsigned char *src);
 
+void free_packet_struct(packet_struct* packet);
+
 char verify_length(unsigned char *packet, int length);
