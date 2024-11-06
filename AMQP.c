@@ -8,12 +8,22 @@ pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
 // further info: https://en.wikipedia.org/wiki/Thread-local_storage
 static Grammar contextful_grammar = NULL;
 
+// Array of mutexes for channels, malloc'ed
+// Array of packet_struct* for channels, malloc'ed
+
+pthread_mutex_t *channel_mutexes = NULL;
+pthread_cond_t *channel_conds = NULL;
+packet_struct **channel_packets = NULL;
+
 enum State {
-  None = 0,
-  ConnectionStart,
-  ConnectionTune,
-  ConnectionSecure,
-  ConnectionOpen
+  NOOP = -1; None = 0,
+             ConnectionStart,
+             ConnectionTune,
+             ConnectionSecure,
+             ConnectionOpen,
+             Connected,
+             ConnectionClose,
+             ConnectionClosed
 };
 
 enum State current_state = None;
@@ -167,6 +177,36 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
   send_packet(sockfd, sent_packet, size);
   printf("Sent packet!\n");
   return next_state;
+}
+
+typedef struct {
+  int channel_id;
+  packet_struct *packet;    // precisa??
+  enum State current_state; // precisa?
+  int sockfd;               // precisa.
+  int *ret_val;
+} channel_args;
+
+void *AMQP_channel_thread(void *void_channel_args) {
+  channel_args *args = (channel_args *)void_channel_args;
+  int my_id = args->channel_id;
+  int sockfd = args->sockfd; // poderia ser global se pa
+  packet_struct *channel_packet = NULL;
+
+  pthread_mutex_t *mutex_read = &channel_mutexes[my_id];
+  pthread_cond_t *read_cond = &channel_conds[my_id];
+
+  pthread_mutex_lock(mutex_read);
+  while ((channel_packet = channel_packets[my_id]) == NULL) {
+    pthread_cond_wait(read_cond, mutex_read);
+  }
+
+  enum State next_state = packet_decider(channel_packet, current_state, sockfd);
+  if (next_state != NOOP)
+    current_state = next_state; // use mutex, or only channel 0 can do it
+  // algo para dar free no channel_packet
+  channel_packets[my_id] = NULL;
+  pthread_mutex_unlock(mutex_read);
 }
 
 int fuzz(int sockfd) {
