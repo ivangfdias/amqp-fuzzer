@@ -1,8 +1,21 @@
+#ifndef UTILS_H
+#define UTILS_H
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-
+#ifndef FUZZING_DEBUG_PRINT
+#define fuzz_debug_printf(...){                                                     \
+  if (fuzzing_debug != 0) {\
+    printf(__VA_ARGS__); \
+  }}
+#endif
+#ifndef FUZZING_DEBUG
+static int fuzzing_debug = 0;
+#define FUZZING_DEBUG
+#endif
+void set_fuzzing_debug(int val);
 
 // Converts src[index], src[index+1] to a short
 short char_in_short( unsigned char* src, int index);
@@ -25,3 +38,4 @@ unsigned char* extract_char_array_entry(unsigned char* src, int index);
 unsigned char* extract_string_entry(unsigned char* src, int index);
 
 char check_bit_equal(unsigned short arg1, unsigned short arg2);
+#endif

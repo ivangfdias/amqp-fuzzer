@@ -6,7 +6,6 @@
 #include "Packet.h"
 #include "utils.h"
 
-
 unsigned char *AMQP_frame(char type, short channel, int size,
                           unsigned char *payload) {
   int total_size = size + 4 + 4;
@@ -81,7 +80,7 @@ int add_string_entry(unsigned char *dest, char field_size,
   return full_size;
 }
 
-char *get_arguments(unsigned char *src) {
+unsigned char *get_arguments(unsigned char *src) {
   // arguments start on position 11;
   int size = char_in_int(src, 3) - 4;
   int arguments_size;
@@ -104,11 +103,91 @@ char verify_length(unsigned char *packet, int length) {
   }
 
   if ((unsigned char)packet[index] != 0xce) {
-    printf("Octet at %d: %2x\n", index, (unsigned char)packet[index]);
+    fuzz_debug_printf("Octet at %d: %2x\n", index, (unsigned char)packet[index]);
     return 1;
   }
   return 0;
 }
 
+unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2){
+    int length1 = char_in_int(packet1, 3) + 8;
+    int length2 = char_in_int(packet2, 3) + 8;
+    int total_length = length1 + length2;
+    unsigned char* appended = calloc(total_length, sizeof(char));
 
-void break_packet(unsigned char *packet, packet_struct *dest) {
+    memcpy(appended, packet1, length1);
+    memcpy(appended + length1, packet2, length2);
+
+    free(packet1);
+    free(packet2);
+    fuzz_debug_printf("Appended packet: \n");
+    for (int i = 0; i < total_length; i++){
+
+        fuzz_debug_printf("%2x ", appended[i]);
+        if ((i + 1) % 16 == 0)
+            fuzz_debug_printf("\n");
+    }
+    return appended;
+
+
+}
+
+void free_packet_struct(packet_struct *packet) {
+  switch (packet->type) {
+  case METHOD:
+    free(packet->method_payload->arguments_byte_array);
+    free(packet->method_payload);
+    break;
+  case HEADER:
+    free(packet->header_payload->property_list);
+    free(packet->header_payload);
+    break;
+  case BODY:
+    free(packet->body_payload->body);
+    free(packet->body_payload);
+  default:
+    break;
+  }
+  free(packet);
+};
+
+packet_struct *break_packet(unsigned char *packet) {
+
+  packet_struct *result = calloc(1, sizeof(packet_struct));
+  frame_type type = packet[0];
+  short channel = char_in_short(packet, 1);
+  unsigned int size = char_in_int(packet, 3);
+  if (packet[7 + size] != 0xCE) {
+    result->type = NONE;
+    return result;
+  }
+  result->type = type;
+  result->channel = channel;
+  result->size = size;
+  switch (type) {
+  case METHOD:
+    method_struct *method_payload = calloc(1, sizeof(method_struct));
+
+    method_payload->class_id = char_in_short(packet, 7);
+    method_payload->method_id = char_in_short(packet, 9);
+
+    method_payload->arguments_byte_array = calloc(size - 4, sizeof(char));
+    memcpy(method_payload->arguments_byte_array, packet + 7 + 4, size - 4);
+
+    method_payload->arguments_length = size - 4;
+
+    result->method_payload = method_payload;
+    break;
+  case HEADER:
+    break;
+  case BODY:
+    break;
+  case HEARTBEAT:
+    break;
+  case NONE:
+    break;
+  default:
+    break;
+  }
+  return result;
+};

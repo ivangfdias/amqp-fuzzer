@@ -1,8 +1,8 @@
-#include <string.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <stdio.h>
+#include "utils.h"
 
+void set_fuzzing_debug(int val){
+    fuzzing_debug = val;
+}
 
 short char_in_short(unsigned char* src, int index){
         short result = ((short) src[index] << 0x08) +

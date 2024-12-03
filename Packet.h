@@ -1,3 +1,5 @@
+#ifndef PACKET_H
+#define PACKET_H
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,16 +7,46 @@
 
 #include "utils.h"
 
-typedef struct {
-  char type;
-  short channel;
-  int size;
-  unsigned char *frame;
-} packet_struct /*! test */;
+typedef enum { NONE, METHOD, HEADER, BODY, HEARTBEAT } frame_type;
+typedef enum {
+  CONNECTION = 10,
+  CHANNEL = 20,
+  EXCHANGE = 40,
+  QUEUE = 50,
+  BASIC = 60,
+  TX = 90
+} class_enum;
 
+typedef struct {
+  unsigned short class_id;
+  unsigned short method_id;
+  char *arguments_byte_array;
+  int arguments_length;
+} method_struct;
+typedef struct {
+  unsigned short class_id;
+  unsigned short weight;
+  unsigned long body_size;
+  unsigned short property_flags;
+  char *property_list;
+  int property_list_size;
+} header_struct;
+typedef struct {
+  char *body;
+  int body_length;
+} body_struct;
+
+typedef struct {
+  frame_type type;
+  unsigned short channel;
+  unsigned int size;
+  method_struct *method_payload;
+  header_struct *header_payload;
+  body_struct *body_payload;
+} packet_struct /*! test */;
 /*! Breaks an application layer packet into something that makes sense for AMQP
  */
-void break_packet(unsigned char *packet, packet_struct *dest);
+packet_struct *break_packet(unsigned char *packet);
 
 unsigned char *AMQP_method_frame(short channel, int size, short packet_class,
                                  short method, unsigned char *payload);
@@ -34,6 +66,12 @@ char send_packet(int connfd, unsigned char *packet, long size);
 int add_string_entry(unsigned char *dest, char field_size,
                      unsigned char *field_contents, int extra_info, int index);
 
+/*! Appends two packets, frees them, and returns a string containing the appended packets.
+ */
+unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2);
 unsigned char *get_arguments(unsigned char *src);
 
+void free_packet_struct(packet_struct* packet);
+
 char verify_length(unsigned char *packet, int length);
+#endif
