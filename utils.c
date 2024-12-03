@@ -1,5 +1,6 @@
 #include "utils.h"
 
+int fuzzing_debug = 0;
 void set_fuzzing_debug(int val){
     fuzzing_debug = val;
 }

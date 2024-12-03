@@ -5,9 +5,33 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
-// #define MAXLINE 4096
+int PACKET_CHAOS, RULE_CHAOS = 0;
+
+char seed_RNG(unsigned int seed) {
+  if (seed == -1) {
+    char *buffer = malloc(4 * sizeof(char));
+    if (getrandom(buffer, 4, 0) == -1) {
+      switch (errno) {
+      case ENOSYS:
+        printf("Note: getrandom not supported. Using time instead.\n");
+        seed = time(NULL);
+        break;
+      default:
+        return 1;
+      }
+    } else {
+      seed = (unsigned int)char_in_int((unsigned char *)buffer, 0);
+    }
+  }
+
+  srand(seed);
+  printf("RNG SEED: %d\n", seed);
+  return 0;
+}
 
 int connect_to_server(char *address, int port) {
 
@@ -43,36 +67,91 @@ int connect_to_server(char *address, int port) {
   return sockfd;
 }
 
+void usage(char *program_name) {
+
+  printf("Usage: %s [address] [port] [-v[v]]\n", program_name);
+}
+
 int main(int argc, char **argv) {
 
-  int port, socketfd;
+  int socketfd = -1;
+  int port = 5672;
   pthread_mutex_t socket_mutex;
   pthread_t listener_thread;
+  int opt;
+  int chaos, verbosity = 0;
+  int fuzzing_debug = 0;
+  unsigned int seed = -1;
+
+  char *address;
+  char *endptr;
+  // TODO: Support arguments correctly
+  // arguments:
+  //      IP
+  //      [Port] default 5672
+  //      [Verbosity] default 0
+  //      [Packet-Chaos] default 0
+  //      [Rule-Chaos] default 0
+  //      [seed] default comes from /dev/urandom
+  // Usage: $0 address [-p port] [-v verbosity] [-P Packet-Chaos] [-R
+  // Rule-Chaos] [-s seed]
 
   if (argc < 2) {
-    printf("Usage: %s [address] [port] [-v[v]]\n", argv[0]);
+    usage(argv[0]);
     return 1;
   }
+  address = calloc(strlen(argv[1]) + 1, sizeof(char));
+  address = strcpy(address, argv[1]);
 
-  if (argc == 2) {
-    port = 5672;
-  } else {
-    port = strtol(argv[2], NULL, 10);
-  }
-  if (argc > 3) {
-    if (strcmp(argv[3], "-vv") == 0) {
+  while ((opt = getopt(argc, argv, "hp:v::P:R:s:")) != -1) {
+    switch (opt) {
+    case 'h':
+      usage(argv[0]);
+      return 1;
+    case 'p':
+      port = strtol(optarg, &endptr, 10);
+      break;
+    case 'v':
+      verbosity = 1;
+      set_fuzzing_debug(1);
+      if (optarg != NULL && strcmp(optarg, "v") == 0) {
+        set_grammar_decoding_debug(1);
+        verbosity++;
+      }
+      break;
+    case 'P':
+    case 'R':
+      chaos = strtol(optarg, &endptr, 10);
+      if (chaos < 0 || chaos > 4) {
+        printf("Error: Value %d invalid on option %c (expected 0-4)\n", chaos,
+               opt);
+        return 1;
+      }
+      if (opt == 'R')
+        RULE_CHAOS = chaos;
+      else if (opt == 'P')
+        PACKET_CHAOS = chaos;
+      break;
 
-      set_grammar_decoding_debug(1);
-      set_fuzzing_debug(1);
-    } else if (strcmp(argv[3], "-v") == 0)
-      set_fuzzing_debug(1);
+    case 's':
+      seed = strtol(optarg, &endptr, 10);
+      break;
+    }
+    // TODO: capture invalid options
   }
+
+  if (verbosity > 0)
+    printf("Values:\n\tAddress: %s\n\tPort: %i\n\tVerbosity: %i\n\tPacket "
+                      "Chaos: %i\n\tRule Chaos: "
+                      "%i\n",
+                      address, port, verbosity, PACKET_CHAOS, RULE_CHAOS);
 
   printf("Connecting to server...\n");
-  socketfd = connect_to_server(argv[1], port);
+  socketfd = connect_to_server(address, port);
 
-  printf("Starting fuzzing tests...\n");
+  printf("\nStarting fuzzing tests...\n");
+  seed_RNG(seed);
   fuzz(socketfd);
-
+  free(address);
   return 0;
 }

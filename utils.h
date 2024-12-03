@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/random.h>
 
 #ifndef FUZZING_DEBUG_PRINT
 #define fuzz_debug_printf(...){                                                     \
@@ -12,9 +13,16 @@
   }}
 #endif
 #ifndef FUZZING_DEBUG
-static int fuzzing_debug = 0;
 #define FUZZING_DEBUG
+extern int fuzzing_debug;
 #endif
+
+#ifndef UTILS_CHAOS
+#define UTILS_CHAOS
+extern int PACKET_CHAOS;
+extern int RULE_CHAOS;
+#endif
+
 void set_fuzzing_debug(int val);
 
 // Converts src[index], src[index+1] to a short

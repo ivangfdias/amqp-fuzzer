@@ -334,7 +334,6 @@ int fuzz(int sockfd) {
 
   grammar_init("./grammars/grammar-spec", "./grammars/grammar-abnf");
 
-  srand(time(NULL));
   printf("Main: Creating listener thread...\n");
   // Create listener thread
   listener_struct *listener_args = malloc(sizeof(listener_struct));
