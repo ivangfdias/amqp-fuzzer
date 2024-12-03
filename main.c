@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
   } else {
     port = strtol(argv[2], NULL, 10);
   }
-  if (argc > 2) {
+  if (argc > 3) {
     if (strcmp(argv[3], "-vv") == 0) {
 
       set_grammar_decoding_debug(1);
