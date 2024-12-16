@@ -1,5 +1,5 @@
 #include "AMQP.h"
-#define IMPLEMENTED_MESSAGES 1
+#define IMPLEMENTED_MESSAGES 6
 pthread_cond_t read_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
 
@@ -174,19 +174,25 @@ unsigned char *chaotic_packet_decider(packet_struct *packet,
                                       char *response_expected, int *size) {
 
   int roll = rand() % IMPLEMENTED_MESSAGES;
+
   switch (roll) {
   case 0:
     return amqp_header(current_state_ptr, size, response_expected);
     break;
   case 1:
+    return connection_start_ok(current_state_ptr, size, response_expected);
     break;
   case 2:
+    return connection_tune_ok(current_state_ptr, size, response_expected, NULL);
     break;
   case 3:
+    return connection_open(current_state_ptr, size, response_expected);
     break;
   case 4:
+    return connection_close(current_state_ptr, size, response_expected);
     break;
   case 5:
+    return connection_close_ok(current_state_ptr, size, response_expected);
     break;
   }
 }
@@ -301,6 +307,9 @@ void *AMQP_channel_thread(void *void_channel_args) {
 
   pthread_mutex_t *my_mutex_read = &channel_mutexes[my_id];
   pthread_cond_t *my_read_cond = &channel_conds[my_id];
+
+  if (my_id == 0)
+    setup_connection_grammar();
 
   while (current_state != ConnectionClosed) {
     pthread_mutex_lock(my_mutex_read);
