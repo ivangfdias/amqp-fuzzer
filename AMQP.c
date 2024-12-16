@@ -101,7 +101,10 @@ void *listener(void *void_args) {
 
   fuzz_debug_printf("Listener born\n");
   // Le a mensagem recebida no socket
-  while ((n = read(sockfd, args->recvline, MAXLINE) > 0)) {
+  while (current_state != ConnectionClosed &&
+         ((n = read(sockfd, args->recvline, MAXLINE) > 0) || errno == EAGAIN)) {
+    if (n == 0 && errno == EAGAIN)
+      continue;
     fuzz_debug_printf("Listener: Got something to parse\n");
     args->recvline[n] = 0;
 
@@ -204,7 +207,8 @@ unsigned char *ordered_packet_decider(packet_struct *packet,
 
     if (packet == NULL) {
 
-      if (current_state == 2 || current_state == 5 || current_state == 6) {
+      if (current_state == 2 || current_state == 3 || current_state == 5 ||
+          current_state == 6) {
         sent_packet = connection_packet_decider(NULL, &next_state, size,
                                                 response_expected);
       }

@@ -38,8 +38,9 @@ int connect_to_server(char *address, int port) {
   int sockfd;
   struct sockaddr_in servaddr;
 
-  // Cria um socket de internet do tipo stream usando o protocolo 0 (TCP)
-  if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+  // Cria um socket de internet do tipo stream não-bloqueante usando o protocolo
+  // 0 (TCP)
+  if ((sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == -1) {
     perror("socket :(\n");
     exit(2);
   }
@@ -60,8 +61,10 @@ int connect_to_server(char *address, int port) {
 
   // Tenta conectar com esse socket
   if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1) {
-    perror("bind :(\n");
-    exit(3);
+    if (errno != EINPROGRESS) {
+      perror("bind :(\n");
+      exit(3);
+    }
   }
 
   return sockfd;
@@ -142,9 +145,9 @@ int main(int argc, char **argv) {
 
   if (verbosity > 0)
     printf("Values:\n\tAddress: %s\n\tPort: %i\n\tVerbosity: %i\n\tPacket "
-                      "Chaos: %i\n\tRule Chaos: "
-                      "%i\n",
-                      address, port, verbosity, PACKET_CHAOS, RULE_CHAOS);
+           "Chaos: %i\n\tRule Chaos: "
+           "%i\n",
+           address, port, verbosity, PACKET_CHAOS, RULE_CHAOS);
 
   printf("Connecting to server...\n");
   socketfd = connect_to_server(address, port);
