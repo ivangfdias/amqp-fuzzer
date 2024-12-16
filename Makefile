@@ -32,9 +32,15 @@ main.out: ${PROGRAM} ${OBJS} ${LIB} ${generator.o}
 
 
 clean:
-	@rm -rf *.o html *.a main.out
+	@rm -rf *.o html *.a main.out logs/*
 
-test:
-	./main.out 127.0.0.1
 
-retest: main.out test
+test-5m-r0-p0:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 0 -P 0
+
+test-5m-r1-p0:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 1 -P 0
+test-5m-r2-p0:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 2 -P 0
+test-5m-r3-p0:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 3 -P 0

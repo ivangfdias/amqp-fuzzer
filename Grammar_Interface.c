@@ -3,13 +3,13 @@
 void overwrite_rule_with_chaos(Grammar grammar, char *rule,
                                grammar_entry_t *ordered_rule) {
 
-  char **rule_array;
-  char *chaos_rule;
-  char *order_rule;
+  char **rule_array = NULL;
+  char *chaos_rule = NULL;
+  char *order_rule = NULL;
 
   char *chaos_prefix = "fuzzer-chaos-";
   char *order_prefix = "fuzzer-order-";
-  int new_rule_size = strlen(chaos_prefix) + sizeof(rule) + 1;
+  int new_rule_size = strlen(chaos_prefix) + strlen(rule) + 1;
 
   switch (RULE_CHAOS) {
   case 0:
@@ -29,9 +29,12 @@ void overwrite_rule_with_chaos(Grammar grammar, char *rule,
 
     rule_array[0] = order_rule;
     rule_array[1] = chaos_rule;
-    grammar_insert(grammar, chaos_rule, grammar_lookup(grammar, rule));
-    grammar_insert(grammar, order_rule, ordered_rule);
-    grammar_insert(grammar, rule, new_str_array_grammar_entry(rule_array, 2));
+
+    (grammar_insert(grammar, chaos_rule, grammar_lookup(grammar, rule)));
+    (grammar_insert(grammar, order_rule, ordered_rule));
+
+    (grammar_insert(grammar, rule, new_str_array_grammar_entry(rule_array, 2)));
+
     break;
   case 1:
   case 3:
@@ -45,13 +48,13 @@ void overwrite_rule_with_chaos(Grammar grammar, char *rule,
     strcat(order_rule, rule);
 
     int i;
-    for (i = 0; i < 4 - RULE_CHAOS; i++){
-        rule_array[i] = order_rule;
-        rule_array[4 - i - 1] = chaos_rule;
+    for (i = 0; i < 4 - RULE_CHAOS; i++) {
+      rule_array[i] = order_rule;
+      rule_array[4 - i - 1] = chaos_rule;
     }
     grammar_insert(grammar, chaos_rule, grammar_lookup(grammar, rule));
     grammar_insert(grammar, order_rule, ordered_rule);
-    grammar_insert(grammar, rule, new_str_array_grammar_entry(rule_array, 2));
+    grammar_insert(grammar, rule, new_str_array_grammar_entry(rule_array, 4));
     break;
   }
 }
