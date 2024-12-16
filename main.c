@@ -26,6 +26,7 @@ char seed_RNG(unsigned int seed) {
     } else {
       seed = (unsigned int)char_in_int((unsigned char *)buffer, 0);
     }
+    free(buffer);
   }
 
   srand(seed);
@@ -67,6 +68,10 @@ int connect_to_server(char *address, int port) {
     }
   }
 
+  while (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) ==
+             -1 &&
+         (errno == EINPROGRESS || errno == EALREADY))
+    ;
   return sockfd;
 }
 
@@ -86,7 +91,7 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
   } else if (strat == 'n')
     currval = get_packet_count();
   do {
-    
+
     printf("\nCreating fuzzing instance\n");
     socketfd = connect_to_server(address, port);
     delta = fuzz(socketfd, strat, stratval) - currval;

@@ -16,7 +16,7 @@ pthread_mutex_t *channel_mutexes = NULL;
 pthread_cond_t *channel_conds = NULL;
 packet_struct **channel_packets = NULL;
 pthread_t *channels = NULL;
-int max_created_threads = 0;
+unsigned int max_created_threads = 0;
 volatile sig_atomic_t is_running = 0;
 
 enum State {
@@ -322,20 +322,11 @@ void *AMQP_channel_thread(void *void_channel_args) {
       fuzz_debug_printf("Packet = NULL\n");
     enum State next_state = packet_decider(channel_packet, current_state,
                                            sockfd, &waiting_response);
-    /*
-    if (my_id == 0 && current_state == 6) {
-      // do something
-      current_state = ConnectionClose;
-      next_state = packet_decider(channel_packet, current_state, sockfd,
-                                  &waiting_response);
-    }*/
     if (next_state != NOOP) {
       fuzz_debug_printf("Channel %d changed current_state to %d\n", my_id,
                         next_state);
       current_state = next_state; // use mutex, or only channel 0 can do it
     }
-    // algo para dar free no channel_packet
-    // free_packet_struct(channel_packets[my_id]);
     channel_packets[my_id] = NULL;
 
     pthread_mutex_unlock(my_mutex_read);
@@ -345,9 +336,11 @@ void *AMQP_channel_thread(void *void_channel_args) {
   pthread_exit(0);
 }
 
-int create_channel_thread(int sockfd) {
+int create_channel_thread(int sockfd, char reset) {
 
   static int threads_array_size = 0;
+  if (reset == 1)
+    threads_array_size = 0;
   int local_created_threads = max_created_threads + 1;
 
   if (local_created_threads > threads_array_size) {
@@ -426,7 +419,6 @@ int check_strat(long long int stratval, long long int (*stratupdate)(),
   return current_val;
 }
 
-void fuzz_initialize() {}
 
 int fuzz(int sockfd, char strat, long long int stratval) {
 
@@ -451,7 +443,7 @@ int fuzz(int sockfd, char strat, long long int stratval) {
 
   // Create Channel 0 thread
   printf("Main: Creating Connection channel thread\n");
-  create_channel_thread(sockfd);
+  create_channel_thread(sockfd, 1);
   pthread_cond_signal(&channel_conds[0]);
 
   if (strat == 't') {
@@ -463,5 +455,6 @@ int fuzz(int sockfd, char strat, long long int stratval) {
   if (retval > 0)
     close_threads(listener_thread);
   printf("Main: Ended\n");
+
   return retval;
 }
