@@ -1,5 +1,5 @@
 #include "AMQP.h"
-
+#define IMPLEMENTED_MESSAGES 1
 pthread_cond_t read_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
 
@@ -22,6 +22,7 @@ enum State {
   None = 0,
   ConnectionStart = 1,
   ConnectionTune = 2,
+  ConnectionTuned = 3, // TODO: change ConnectionTune logic
   //  ConnectionSecure, unused
   ConnectionOpen = 4,
   Connected = 5,
@@ -152,36 +153,70 @@ packet_struct *wait_response(int *ext_n, listener_struct *listener_args) {
   return packet;
 }
 
-enum State packet_decider(packet_struct *packet, enum State current_state,
-                          int sockfd, char *response_expected) {
-  int size = 0;
+unsigned char *amqp_header(enum State *next_state, int *size,
+                           char *response_expected) {
+  unsigned char *packet = decode_rule("amqp", size, NULL);
+  *response_expected = 1;
+  *next_state = ConnectionStart;
+  for (int i = 0; i < *size; i++) {
+    printf("%2x ", packet[i]);
+    if ((i + 1) % 16)
+      printf("\n");
+  }
+  return packet;
+}
+
+unsigned char *chaotic_packet_decider(packet_struct *packet,
+                                      enum State *current_state_ptr,
+                                      char *response_expected, int *size) {
+
+  int roll = rand() % IMPLEMENTED_MESSAGES;
+  switch (roll) {
+  case 0:
+    return amqp_header(current_state_ptr, size, response_expected);
+    break;
+  case 1:
+    break;
+  case 2:
+    break;
+  case 3:
+    break;
+  case 4:
+    break;
+  case 5:
+    break;
+  }
+}
+
+unsigned char *ordered_packet_decider(packet_struct *packet,
+                                      enum State *current_state_ptr,
+                                      // int sockfd,
+                                      char *response_expected, int *size) {
+  //  int size = 0;
   unsigned char *sent_packet;
+  enum State current_state = *current_state_ptr;
   enum State next_state = current_state;
 
   if (current_state == None) {
     fuzz_debug_printf("No packet received, sending header\n");
-    sent_packet = decode_rule("amqp", &size, NULL);
-    *response_expected = 1;
-    next_state = ConnectionStart;
+    sent_packet = amqp_header(&next_state, size, response_expected);
   } else {
 
     if (packet == NULL) {
 
       if (current_state == 2 || current_state == 5 || current_state == 6) {
-        fuzz_debug_printf("Baguncinha!\n");
-        sent_packet = connection_packet_decider(NULL, &next_state, &size,
+        sent_packet = connection_packet_decider(NULL, &next_state, size,
                                                 response_expected);
-        fuzz_debug_printf("Baguncei!\n");
       }
     } else {
 
       if (packet->type == NONE)
-        return None;
+        return NULL;
       if (packet->type == METHOD) {
         switch (packet->method_payload->class_id) {
         case CONNECTION:
           sent_packet = connection_packet_decider(packet->method_payload,
-                                                  (int *)&next_state, &size,
+                                                  (int *)&next_state, size,
                                                   response_expected);
           break;
         case CHANNEL:
@@ -212,6 +247,33 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
     }
   }
 
+  *current_state_ptr = next_state;
+  return sent_packet;
+}
+
+enum State packet_decider(packet_struct *packet, enum State current_state,
+                          int sockfd, char *response_expected) {
+  int size = 0;
+  unsigned char *sent_packet;
+  enum State next_state = current_state;
+
+  if (size == 0)
+    printf("Rolling!\n");
+  int roll = rand() % 4 + 1;
+  if (roll >= 0)
+    printf("Rolled a %d (comparing to %d)", roll, PACKET_CHAOS);
+  if (roll >= PACKET_CHAOS) {
+    fuzz_debug_printf(
+        "Main: Sending packet as expected (roll = %d, PACKET_CHAOS = %d)\n",
+        roll, PACKET_CHAOS);
+    sent_packet =
+        ordered_packet_decider(packet, &next_state, response_expected, &size);
+  } else {
+    fuzz_debug_printf("Main: Sending packet chosen randomly\n");
+    sent_packet =
+        chaotic_packet_decider(packet, &next_state, response_expected, &size);
+  }
+
   if (sent_packet != NULL) {
     fuzz_debug_printf("Sending packet...\n");
     send_packet(sockfd, sent_packet, size);
@@ -222,7 +284,7 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
 
 typedef struct {
   int channel_id;
-  int sockfd; // precisa.
+  int sockfd;
 } channel_args;
 
 thread_local char waiting_response = 0;
