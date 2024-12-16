@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/random.h>
+#include <pthread.h>
 
 #ifndef FUZZING_DEBUG_PRINT
 #define fuzz_debug_printf(...){                                                     \
@@ -24,6 +25,8 @@ extern int RULE_CHAOS;
 #endif
 
 void set_fuzzing_debug(int val);
+
+
 
 // Converts src[index], src[index+1] to a short
 short char_in_short( unsigned char* src, int index);

@@ -6,6 +6,23 @@
 #include "Packet.h"
 #include "utils.h"
 
+static long long int packet_count = 0;
+static pthread_mutex_t packet_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+long long int add_packet_count(int amount) {
+  pthread_mutex_lock(&packet_mutex);
+  packet_count += amount;
+  pthread_mutex_unlock(&packet_mutex);
+  return packet_count;
+}
+void acc_packet_count() { add_packet_count(1); }
+long long int get_packet_count() {
+  pthread_mutex_lock(&packet_mutex);
+  long long int count = packet_count;
+  pthread_mutex_unlock(&packet_mutex);
+  return count;
+}
+
 unsigned char *AMQP_frame(char type, short channel, int size,
                           unsigned char *payload) {
   int total_size = size + 4 + 4;
@@ -65,6 +82,7 @@ unsigned char *AMQP_body_frame(short channel, int size,
 char send_packet(int connfd, unsigned char *packet, long size) {
   int written_size = write(connfd, packet, size);
   if (written_size == size) {
+    add_packet_count(1);
     free(packet);
     return 0;
   }
@@ -103,33 +121,32 @@ char verify_length(unsigned char *packet, int length) {
   }
 
   if ((unsigned char)packet[index] != 0xce) {
-    fuzz_debug_printf("Octet at %d: %2x\n", index, (unsigned char)packet[index]);
+    fuzz_debug_printf("Octet at %d: %2x\n", index,
+                      (unsigned char)packet[index]);
     return 1;
   }
   return 0;
 }
 
-unsigned char* packet_append(unsigned char* packet1, unsigned char* packet2){
-    int length1 = char_in_int(packet1, 3) + 8;
-    int length2 = char_in_int(packet2, 3) + 8;
-    int total_length = length1 + length2;
-    unsigned char* appended = calloc(total_length, sizeof(char));
+unsigned char *packet_append(unsigned char *packet1, unsigned char *packet2) {
+  int length1 = char_in_int(packet1, 3) + 8;
+  int length2 = char_in_int(packet2, 3) + 8;
+  int total_length = length1 + length2;
+  unsigned char *appended = calloc(total_length, sizeof(char));
 
-    memcpy(appended, packet1, length1);
-    memcpy(appended + length1, packet2, length2);
+  memcpy(appended, packet1, length1);
+  memcpy(appended + length1, packet2, length2);
 
-    free(packet1);
-    free(packet2);
-    fuzz_debug_printf("Appended packet: \n");
-    for (int i = 0; i < total_length; i++){
+  free(packet1);
+  free(packet2);
+  fuzz_debug_printf("Appended packet: \n");
+  for (int i = 0; i < total_length; i++) {
 
-        fuzz_debug_printf("%2x ", appended[i]);
-        if ((i + 1) % 16 == 0)
-            fuzz_debug_printf("\n");
-    }
-    return appended;
-
-
+    fuzz_debug_printf("%2x ", appended[i]);
+    if ((i + 1) % 16 == 0)
+      fuzz_debug_printf("\n");
+  }
+  return appended;
 }
 
 void free_packet_struct(packet_struct *packet) {

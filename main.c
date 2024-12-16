@@ -75,6 +75,28 @@ void usage(char *program_name) {
   printf("Usage: %s [address] [port] [-v[v]]\n", program_name);
 }
 
+int fuzz_with_strategy(char strat, long long int stratval, char *address,
+                       int port) {
+  int socketfd = -1;
+  long long int currval = 0;
+  int delta = 0;
+  if (strat == 't') {
+    currval = time(NULL);
+    stratval = currval + stratval;
+  } else if (strat == 'n')
+    currval = get_packet_count();
+  do {
+    
+    printf("\nCreating fuzzing instance\n");
+    socketfd = connect_to_server(address, port);
+    delta = fuzz(socketfd, strat, stratval) - currval;
+    close(socketfd);
+    currval += delta;
+    printf("Fuzzing Strategy Value: %lld / %lld \n", currval, stratval);
+  } while (currval < stratval);
+  return currval;
+}
+
 int main(int argc, char **argv) {
 
   int socketfd = -1;
@@ -85,6 +107,9 @@ int main(int argc, char **argv) {
   int chaos, verbosity = 0;
   int fuzzing_debug = 0;
   unsigned int seed = -1;
+
+  char strat = '0';
+  long long int stratval = 0;
 
   char *address;
   char *endptr;
@@ -106,7 +131,7 @@ int main(int argc, char **argv) {
   address = calloc(strlen(argv[1]) + 1, sizeof(char));
   address = strcpy(address, argv[1]);
 
-  while ((opt = getopt(argc, argv, "hp:v::P:R:s:")) != -1) {
+  while ((opt = getopt(argc, argv, "hp:v::P:R:s:n:t:")) != -1) {
     switch (opt) {
     case 'h':
       usage(argv[0]);
@@ -139,8 +164,17 @@ int main(int argc, char **argv) {
     case 's':
       seed = strtol(optarg, &endptr, 10);
       break;
+    case 'n':
+    case 't':
+      if (strat != '0') {
+        printf("ERROR: Only use -n or -t, not both\nExiting.");
+        free(address);
+        exit(1);
+      }
+      strat = opt;
+      stratval = strtol(optarg, &endptr, 10);
+      break;
     }
-    // TODO: capture invalid options
   }
 
   if (verbosity > 0)
@@ -150,11 +184,10 @@ int main(int argc, char **argv) {
            address, port, verbosity, PACKET_CHAOS, RULE_CHAOS);
 
   printf("Connecting to server...\n");
-  socketfd = connect_to_server(address, port);
 
   printf("\nStarting fuzzing tests...\n");
   seed_RNG(seed);
-  fuzz(socketfd);
+  fuzz_with_strategy(strat, stratval, address, port);
   free(address);
   return 0;
 }

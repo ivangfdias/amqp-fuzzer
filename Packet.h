@@ -43,7 +43,13 @@ typedef struct {
   method_struct *method_payload;
   header_struct *header_payload;
   body_struct *body_payload;
-} packet_struct /*! test */;
+} packet_struct;
+
+
+long long int add_packet_count(int amount);
+void acc_packet_count(); // add_packet_count(1);
+long long int get_packet_count();
+
 /*! Breaks an application layer packet into something that makes sense for AMQP
  */
 packet_struct *break_packet(unsigned char *packet);

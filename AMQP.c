@@ -1,4 +1,5 @@
 #include "AMQP.h"
+
 #define IMPLEMENTED_MESSAGES 6
 pthread_cond_t read_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_read = PTHREAD_MUTEX_INITIALIZER;
@@ -16,6 +17,7 @@ pthread_cond_t *channel_conds = NULL;
 packet_struct **channel_packets = NULL;
 pthread_t *channels = NULL;
 int max_created_threads = 0;
+volatile sig_atomic_t is_running = 0;
 
 enum State {
   NOOP = -1,
@@ -93,6 +95,7 @@ typedef struct {
 
 void *listener(void *void_args) {
 
+  is_running = 1;
   listener_struct *args = (listener_struct *)void_args;
   int sockfd = args->socket_fd;
 
@@ -132,6 +135,7 @@ void *listener(void *void_args) {
     pthread_cancel(channels[i]);
     pthread_cond_signal(&channel_conds[i]);
   }
+  is_running = 0;
   return NULL;
 }
 
@@ -161,11 +165,6 @@ unsigned char *amqp_header(enum State *next_state, int *size,
   unsigned char *packet = decode_rule("amqp", size, NULL);
   *response_expected = 1;
   *next_state = ConnectionStart;
-  for (int i = 0; i < *size; i++) {
-    printf("%2x ", packet[i]);
-    if ((i + 1) % 16)
-      printf("\n");
-  }
   return packet;
 }
 
@@ -267,11 +266,7 @@ enum State packet_decider(packet_struct *packet, enum State current_state,
   unsigned char *sent_packet;
   enum State next_state = current_state;
 
-  if (size == 0)
-    printf("Rolling!\n");
   int roll = rand() % 4 + 1;
-  if (roll >= 0)
-    printf("Rolled a %d (comparing to %d)", roll, PACKET_CHAOS);
   if (roll >= PACKET_CHAOS) {
     fuzz_debug_printf(
         "Main: Sending packet as expected (roll = %d, PACKET_CHAOS = %d)\n",
@@ -399,13 +394,49 @@ int create_channel_thread(int sockfd) {
   return max_created_threads;
 }
 
-int fuzz(int sockfd) {
+void close_threads(pthread_t listener_thread) {
+
+  pthread_join(listener_thread, NULL);
+  printf("Main: Connection closed.\n");
+  int joined_channels = 0;
+  int i = 0;
+  while (joined_channels < max_created_threads) {
+    pthread_join(channels[i], NULL);
+    joined_channels++;
+    i = (i + 1) % max_created_threads;
+    printf("Main: Closed %d/%d channels...\n", joined_channels,
+           max_created_threads);
+  }
+}
+
+long long int get_current_time() { return (long long int)time(NULL); }
+
+int check_strat(long long int stratval, long long int (*stratupdate)(),
+                pthread_t listener_thread) {
+
+  long long int current_val;
+  char running = 1;
+  while (running && (current_val = stratupdate()) < stratval) {
+    if (is_running == 0) {
+      close_threads(listener_thread);
+      running = 0;
+      return current_val;
+    }
+  }
+  return current_val;
+}
+
+void fuzz_initialize() {}
+
+int fuzz(int sockfd, char strat, long long int stratval) {
 
   pthread_t listener_thread;
   pthread_cond_t nova_msg = PTHREAD_COND_INITIALIZER;
   pthread_mutex_t msg_mutex = PTHREAD_MUTEX_INITIALIZER;
+  current_state = None;
+  max_created_threads = 0;
 
-  int n;
+  int retval = 0;
 
   grammar_init("./grammars/grammar-spec", "./grammars/grammar-abnf");
 
@@ -423,17 +454,14 @@ int fuzz(int sockfd) {
   create_channel_thread(sockfd);
   pthread_cond_signal(&channel_conds[0]);
 
-  pthread_join(listener_thread, NULL);
-  printf("Main: Connection closed.\n");
-  int joined_channels = 0;
-  int i = 0;
-  while (joined_channels < max_created_threads) {
-    pthread_join(channels[i], NULL);
-    joined_channels++;
-    i = (i + 1) % max_created_threads;
-    printf("Main: Closed %d/%d channels...\n", joined_channels,
-           max_created_threads);
+  if (strat == 't') {
+    retval = check_strat(stratval, &get_current_time, listener_thread);
   }
-  printf("Main: Finished.\n");
-  return 0;
+  if (strat == 'n') {
+    retval = check_strat(stratval, &get_packet_count, listener_thread);
+  }
+  if (retval > 0)
+    close_threads(listener_thread);
+  printf("Main: Ended\n");
+  return retval;
 }

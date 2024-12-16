@@ -1,5 +1,6 @@
 #include "Connection.h"
 #include <pthread.h>
+#include <signal.h>
 #include <threads.h>
 #include <unistd.h>
 
@@ -8,4 +9,4 @@
  */
 int send_protocol_header(int sockfd);
 
-int fuzz(int sockfd);
+int fuzz(int sockfd, char strat, long long int stratval);

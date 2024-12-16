@@ -15,13 +15,14 @@ OBJS= AMQP.o Packet.o utils.o grammar-parser.o packet-generator.o Connection.o G
 ##################################
 .SUFFIXES: .c .o .a
 
+all: generator.o main.out 
+	
 .c.o:
 	${CC} ${CFLAGS} ${GLIB} -c $<
 
 generator.o:
 	${CC} ${CFLAGS} ${GLIB} -c ../grammar/packet-generator.c ../grammar/grammar-parser.c -lglib-2.0
 
-all: generator.o main.out 
 
 ${LIB}: ${OBJS} ${generator.o}
 	${AR} ${ARFLAGS} $@ ${OBJS}
