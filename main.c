@@ -85,11 +85,18 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
   int socketfd = -1;
   long long int currval = 0;
   int delta = 0;
+  long long int printable_currval = 0;
+  long long int printable_stratval = stratval;
+  char *unit = NULL;
   if (strat == 't') {
     currval = time(NULL);
+    printable_stratval = stratval;
     stratval = currval + stratval;
-  } else if (strat == 'n')
+    unit = "seconds";
+  } else if (strat == 'n') {
     currval = get_packet_count();
+    unit = "packets";
+  }
   do {
 
     printf("\nCreating fuzzing instance\n");
@@ -97,7 +104,9 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
     delta = fuzz(socketfd, strat, stratval) - currval;
     close(socketfd);
     currval += delta;
-    printf("Fuzzing Strategy Value: %lld / %lld \n", currval, stratval);
+    printable_currval += delta;
+    printf("Fuzzing Strategy Value: %lld / %lld %s\n", printable_currval,
+           printable_stratval, unit);
   } while (currval < stratval);
   return currval;
 }

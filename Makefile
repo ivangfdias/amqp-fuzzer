@@ -37,10 +37,21 @@ clean:
 
 test-5m-r0-p0:
 	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 0 -P 0
-
 test-5m-r1-p0:
 	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 1 -P 0
 test-5m-r2-p0:
 	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 2 -P 0
 test-5m-r3-p0:
 	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 3 -P 0
+test-5m-r4-p0:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 4 -P 0
+
+
+test-5m-r0-p1:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 0 -P 1
+test-5m-r0-p2:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 0 -P 2
+test-5m-r0-p3:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 0 -P 3
+test-5m-r0-p4:
+	./monitor.sh ./main.out 127.0.0.1 -t 300 -R 0 -P 4
