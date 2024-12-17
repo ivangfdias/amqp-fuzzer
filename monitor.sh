@@ -27,6 +27,6 @@ do
     sleep "0,01"
 done
 
-notify
+sleep 3 && notify
 
 #top -b -n 1 --pid = ${child} | tail -2 | head -3
