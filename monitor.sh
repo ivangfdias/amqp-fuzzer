@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# this function is purely for myself
+notify(){
+    URL=$(cat ntfy_url) 
+    pgrep rabbitmq-server >/dev/null
+
+    if [ $? -eq 0 ]; then
+       curl -H "t: Finished a test!" -H p:3 -H "tags: heavy_check_mark" -d "It was logged at logs/${prefix}-..." ${URL}
+   else
+       curl -H "t: RabbitMQ crashed!" -H p:4 -H "tags: warning" -d "Fuzzing process terminated" ${URL}
+    fi
+}
+
 
 # TOP
 $* &
@@ -15,5 +27,6 @@ do
     sleep "0,01"
 done
 
-echo "end"
+notify
+
 #top -b -n 1 --pid = ${child} | tail -2 | head -3

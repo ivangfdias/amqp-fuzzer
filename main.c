@@ -72,6 +72,7 @@ int connect_to_server(char *address, int port) {
              -1 &&
          (errno == EINPROGRESS || errno == EALREADY))
     ;
+
   return sockfd;
 }
 
@@ -88,6 +89,9 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
   long long int printable_currval = 0;
   long long int printable_stratval = stratval;
   char *unit = NULL;
+
+  long long int last_packets_count = 0;
+  long long int next_packets_count = 0;
   if (strat == 't') {
     currval = time(NULL);
     printable_stratval = stratval;
@@ -103,6 +107,11 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
     socketfd = connect_to_server(address, port);
     delta = fuzz(socketfd, strat, stratval) - currval;
     close(socketfd);
+    next_packets_count = get_packet_count();
+    if (next_packets_count == last_packets_count) {
+      exit(1);
+    }
+    last_packets_count = next_packets_count;
     currval += delta;
     printable_currval += delta;
     printf("Fuzzing Strategy Value: %lld / %lld %s\n", printable_currval,
