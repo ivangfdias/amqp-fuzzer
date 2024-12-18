@@ -112,6 +112,7 @@ unsigned char *connection_start_ok(int *next_state, int *sent_packet_size,
   unsigned char *result =
       decode_rule("method", sent_packet_size, mutable_grammar);
 
+  syslog(LOG_INFO, "C: Class 10, Method 11 [%m]");
   return result;
 }
 
@@ -124,7 +125,7 @@ unsigned char *connection_tune_ok(int *next_state, int *sent_packet_size,
   *response_expected = 0;
   /* GETTING INFORMATION FROM METHOD DATA */
   int channel_max = 0;
-  int frame_max = 0;
+  int frame_max = -1;
   int received_channel_max, received_frame_max;
 
   if (method_data == NULL) {
@@ -136,7 +137,8 @@ unsigned char *connection_tune_ok(int *next_state, int *sent_packet_size,
     received_frame_max =
         char_in_int((unsigned char *)method_data->arguments_byte_array, 2);
     channel_max = rand() % (received_channel_max + 1); // enable overflow
-    frame_max = rand() % (received_frame_max + 1);     // enable overflow
+    while (frame_max != 0 && frame_max < 4095) // Minimum accepted value is 4096, 0 is also accepted
+	    frame_max = rand() % (received_frame_max + 1);     // enable overflow
   }
 
   Grammar mutable_grammar = copy_grammar(connection_grammar);
@@ -166,6 +168,7 @@ unsigned char *connection_tune_ok(int *next_state, int *sent_packet_size,
   unsigned char *result =
       decode_rule("method", sent_packet_size, mutable_grammar);
 
+  syslog(LOG_INFO, "C: Class 10, Method 31 [%m]");
   return result;
 }
 
@@ -192,6 +195,7 @@ unsigned char *connection_open(int *next_state, int *sent_packet_size,
   unsigned char *result =
       decode_rule("method", sent_packet_size, mutable_grammar);
 
+  syslog(LOG_INFO, "C: Class 10, Method 40 [%m]");
   return result;
 }
 
@@ -225,6 +229,7 @@ unsigned char *connection_close(int *next_state, int *sent_packet_size,
   unsigned char *result =
       decode_rule("method", sent_packet_size, mutable_grammar);
 
+  syslog(LOG_INFO, "C: Class 10, Method 50 [%m]");
   return result;
 }
 
@@ -247,6 +252,7 @@ unsigned char *connection_close_ok(int *next_state, int *sent_packet_size,
   unsigned char *result =
       decode_rule("method", sent_packet_size, mutable_grammar);
 
+  syslog(LOG_INFO, "C: Class 10, Method 51 [%m]");
   return result;
 }
 

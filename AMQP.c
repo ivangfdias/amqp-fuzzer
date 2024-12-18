@@ -24,7 +24,7 @@ enum State {
   None = 0,
   ConnectionStart = 1,
   ConnectionTune = 2,
-  ConnectionTuned = 3, // TODO: change ConnectionTune logic
+  ConnectionTuned = 3, 
   //  ConnectionSecure, unused
   ConnectionOpen = 4,
   Connected = 5,
@@ -106,8 +106,11 @@ void *listener(void *void_args) {
   // Le a mensagem recebida no socket
   while (current_state != ConnectionClosed &&
          ((n = read(sockfd, args->recvline, MAXLINE) > 0) || errno == EAGAIN)) {
-    if (n == 0 && errno == EAGAIN)
+    if (n == 0 && errno == EAGAIN){
+
+
       continue;
+    }
     fuzz_debug_printf("Listener: Got something to parse\n");
     args->recvline[n] = 0;
 
@@ -165,6 +168,7 @@ unsigned char *amqp_header(enum State *next_state, int *size,
   unsigned char *packet = decode_rule("amqp", size, NULL);
   *response_expected = 1;
   *next_state = ConnectionStart;
+  syslog(LOG_INFO, "C: AMQP Header [%m]");
   return packet;
 }
 

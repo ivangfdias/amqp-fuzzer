@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <sys/random.h>
 #include <pthread.h>
+#include <syslog.h>
 
 #ifndef FUZZING_DEBUG_PRINT
 #define fuzz_debug_printf(...){                                                     \

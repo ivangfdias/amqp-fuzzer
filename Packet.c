@@ -86,6 +86,7 @@ char send_packet(int connfd, unsigned char *packet, long size) {
     free(packet);
     return 0;
   }
+  syslog(LOG_ERR, "Packet delivery failed: [%m]");
   free(packet);
   return 1;
 }
@@ -194,6 +195,8 @@ packet_struct *break_packet(unsigned char *packet) {
     method_payload->arguments_length = size - 4;
 
     result->method_payload = method_payload;
+    
+    syslog(LOG_INFO,"S: Class %d, Method: %d [%m]", method_payload->class_id, method_payload->method_id);
     break;
   case HEADER:
     break;

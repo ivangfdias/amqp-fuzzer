@@ -106,7 +106,6 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
     printf("\nCreating fuzzing instance\n");
     socketfd = connect_to_server(address, port);
     delta = fuzz(socketfd, strat, stratval) - currval;
-    close(socketfd);
     next_packets_count = get_packet_count();
     if (next_packets_count == last_packets_count) {
       exit(1);
@@ -116,6 +115,8 @@ int fuzz_with_strategy(char strat, long long int stratval, char *address,
     printable_currval += delta;
     printf("Fuzzing Strategy Value: %lld / %lld %s\n", printable_currval,
            printable_stratval, unit);
+    syslog(LOG_INFO, "Fuzzing Strategy Value: %lld / %lld %s [%m]", printable_currval,printable_stratval, unit);
+    close(socketfd);
   } while (currval < stratval);
   return currval;
 }
