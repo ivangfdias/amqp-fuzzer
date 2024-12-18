@@ -24,7 +24,7 @@ enum State {
   None = 0,
   ConnectionStart = 1,
   ConnectionTune = 2,
-  ConnectionTuned = 3, 
+  ConnectionTuned = 3,
   //  ConnectionSecure, unused
   ConnectionOpen = 4,
   Connected = 5,
@@ -100,39 +100,57 @@ void *listener(void *void_args) {
   int sockfd = args->socket_fd;
 
   int n;
+  int poll_ret;
   char recvline[MAXLINE + 1]; // Mensagem recebida do servidor
 
   fuzz_debug_printf("Listener born\n");
   // Le a mensagem recebida no socket
-  while (current_state != ConnectionClosed &&
-         ((n = read(sockfd, args->recvline, MAXLINE) > 0) || errno == EAGAIN)) {
-    if (n == 0 && errno == EAGAIN){
 
+  struct pollfd fds[1];
+  fds[0].fd = sockfd;
+  fds[0].events = POLLIN | POLLOUT;
+  while ((poll_ret = poll(fds, 1, 500)) >= 0) {
 
-      continue;
+    if (poll_ret == 0) {
+      syslog(LOG_INFO, "Socket closed by peer [%m]");
+      fuzz_debug_printf("Socket closed by peer\n");
+      break;
     }
-    fuzz_debug_printf("Listener: Got something to parse\n");
-    args->recvline[n] = 0;
 
-    // Separating necessary for when AMQP frames come in "bundles"
-    int parsed_n = 0;
-    while (parsed_n < n) {
+    while (
+        current_state != ConnectionClosed &&
+        ((n = read(sockfd, args->recvline, MAXLINE) > 0) || errno == EAGAIN)) {
+      if (n == 0 && errno == EAGAIN) {
 
-      fuzz_debug_printf("Listener: Received packet. Breaking... (%d/%d)\n",
-                        parsed_n, n);
-      packet_struct *read_packet = break_packet(args->recvline);
-      int channel = read_packet->channel;
-      pthread_mutex_lock(&channel_mutexes[channel]);
-      channel_packets[channel] =
-          realloc(channel_packets[channel], sizeof(packet_struct *));
-      channel_packets[channel] = break_packet(args->recvline);
-      pthread_mutex_unlock(&channel_mutexes[channel]);
-      pthread_cond_signal(&channel_conds[channel]);
-      parsed_n = read_packet->size + 7;
+        continue;
+      }
+      fuzz_debug_printf("Listener: Got something to parse\n");
+      args->recvline[n] = 0;
+
+      // Separating necessary for when AMQP frames come in "bundles"
+      int parsed_n = 0;
+      while (parsed_n < n) {
+        fuzz_debug_printf("Listener: Received packet. Breaking... (%d/%d)\n",
+                          parsed_n, n);
+        packet_struct *read_packet = break_packet(args->recvline);
+        int channel = read_packet->channel;
+        pthread_mutex_lock(&channel_mutexes[channel]);
+        channel_packets[channel] =
+            realloc(channel_packets[channel], sizeof(packet_struct *));
+        channel_packets[channel] = break_packet(args->recvline);
+        pthread_mutex_unlock(&channel_mutexes[channel]);
+        pthread_cond_signal(&channel_conds[channel]);
+        parsed_n = read_packet->size + 7;
+      }
+      fuzz_debug_printf("n = %d\n", n);
+      args->n = n;
     }
-    fuzz_debug_printf("n = %d\n", n);
-    args->n = n;
   }
+  if (poll_ret < 0) {
+    syslog(LOG_ERR, "Polling error: returned %d. [%m]", poll_ret);
+    fuzz_debug_printf("Polling error.\n");
+  }
+
   fuzz_debug_printf("Listener exiting!\n");
   for (int i = 0; i < max_created_threads; i++) {
     pthread_cancel(channels[i]);
@@ -422,7 +440,6 @@ int check_strat(long long int stratval, long long int (*stratupdate)(),
   }
   return current_val;
 }
-
 
 int fuzz(int sockfd, char strat, long long int stratval) {
 

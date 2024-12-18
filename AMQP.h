@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <threads.h>
+#include <poll.h>
 #include <unistd.h>
 
 #define MAXLINE 4096
